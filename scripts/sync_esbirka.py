@@ -2,9 +2,14 @@
 Denni synchronizace vybranych zakonu z e-Sbirka open data do nasi Supabase
 databaze (dokumenty + vyhledatelne useky s embeddingy).
 
-Faze 1: jen mala, rucne vybrana sada zakonu (viz TARGET_CITATIONS), spousteno
+Faze 1: mala, rucne vybrana sada zakonu (viz TARGET_CITATIONS), spousteno
 zatim jen rucne (workflow_dispatch), ne na cronu, dokud si neoverime spravnost
 vysledku.
+
+Vykonnostni poznamka: soubory 003 (~1.2 GB) a 004 (~500 MB) obsahuji VSECHNY
+ceske pravni akty najednou (e-Sbirka nema per-zakon filtr). Kazdy se proto
+stahuje a stream-prochazi PRAVE JEDNOU ZA CELY BEH (ne jednou na zakon) -
+diky tomu pridani dalsich zakonu do TARGET_CITATIONS nezvysi pocet stahovani.
 
 Zdroj dat: https://opendata.eselpoint.gov.cz/datove-sady-esbirka/
 Zadna registrace/API klic neni potreba - jde o volne dostupna otevrena data.
@@ -24,12 +29,12 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN_USER_ID = os.environ["ADMIN_USER_ID"]  # whose saved Gemini key we reuse for indexing
 
-# Phase 1: small, deliberately curated starter set (citace format jako v e-Sbirce)
+# Faze 1: mala, zamerne vybrana startovaci sada (citace ve formatu e-Sbirky)
 TARGET_CITATIONS = [
     "89/2012 Sb.",   # obcansky zakonik
 ]
 
-# Safety cap while we verify correctness - raise once confirmed working
+# Bezpecnostni limit, dokud si neoverime spravnost - pak zvysit/odstranit
 MAX_CHUNKS_PER_ACT = int(os.environ.get("MAX_CHUNKS_PER_ACT", "15"))
 
 EMBED_MODEL = "gemini-embedding-001"
@@ -45,7 +50,7 @@ def log(*a):
 def fetch_gunzip_stream(path):
     url = f"{BASE}/{path}"
     log(f"-> stahuji {url}")
-    r = SESSION.get(url, stream=True, timeout=600)
+    r = SESSION.get(url, stream=True, timeout=900)
     r.raise_for_status()
     return gzip.GzipFile(fileobj=r.raw)
 
@@ -69,57 +74,68 @@ def current_version_iri(act):
     return posledni.get("iri")
 
 
-def find_section_nodes(version_iri):
-    """Vrati vrcholove uzly s citaci (napr. '§ 1') pro danou verzi zakona,
-    serazene podle hierarchie."""
+def scan_version_fragments(version_iris):
+    """JEDEN prochod souborem 003 pro VSECHNY pozadovane verze najednou.
+    Vraci pro kazdou verzi: seznam vrcholovych uzlu (paragrafy, citace '§ ...')
+    a seznam VSECH fragmentu (pro pozdejsi dohledani potomku v pameti,
+    bez dalsiho stahovani)."""
     stream = fetch_gunzip_stream("003PravniAktZneniFragment.json.gz")
-    nodes = []
-    prefix = version_iri + "/"
+    prefixes = {v: v + "/" for v in version_iris}
+
+    section_nodes = {v: [] for v in version_iris}   # jen uzly s '§ ...'
+    all_fragments = {v: [] for v in version_iris}    # uplne vsechny (pro potomky)
+
+    count = 0
     for item in ijson.items(stream, "položky.item"):
         iri = item.get("iri", "")
-        if not iri.startswith(prefix):
-            continue
-        cit = item.get("znění-fragment-citace")
-        if not cit or not cit.startswith("§"):
-            continue
-        nodes.append({
-            "iri": iri,
-            "citace": cit,
-            "url": item.get("znění-fragment-url"),
-            "hierarchie_hex": item.get("znění-fragment-hierarchie-hex") or "",
-        })
-    nodes.sort(key=lambda n: n["hierarchie_hex"])
-    return nodes
+        for v, prefix in prefixes.items():
+            if not iri.startswith(prefix):
+                continue
+            frag_ref = (item.get("právní-akt-fragment") or {}).get("fragment-id")
+            hierarchie_hex = item.get("znění-fragment-hierarchie-hex") or ""
+            if frag_ref is not None:
+                all_fragments[v].append({
+                    "iri": iri,
+                    "fragment_id": frag_ref,
+                    "hierarchie_hex": hierarchie_hex,
+                })
+            cit = item.get("znění-fragment-citace")
+            if cit and cit.startswith("§"):
+                section_nodes[v].append({
+                    "iri": iri,
+                    "citace": cit,
+                    "hierarchie_hex": hierarchie_hex,
+                })
+            break
+        count += 1
+        if count % 500000 == 0:
+            log(f"   ...prosel {count} zaznamu 003")
+
+    for v in version_iris:
+        section_nodes[v].sort(key=lambda n: n["hierarchie_hex"])
+        all_fragments[v].sort(key=lambda f: f["hierarchie_hex"])
+
+    return section_nodes, all_fragments
 
 
-def find_descendant_fragment_ids(version_iri, section_nodes):
-    """Pro kazdy vrcholovy uzel (paragraf) najde VSECHNY potomky (vcetne sebe)
-    a jejich fragment-id + hierarchie-hex, aby se dal slozit cely text."""
-    stream = fetch_gunzip_stream("003PravniAktZneniFragment.json.gz")
-    section_iris = [n["iri"] for n in section_nodes]
-    by_section = {iri: [] for iri in section_iris}
-    prefix = version_iri + "/"
-    for item in ijson.items(stream, "položky.item"):
-        iri = item.get("iri", "")
-        if not iri.startswith(prefix):
-            continue
-        for sec_iri in section_iris:
-            if iri == sec_iri or iri.startswith(sec_iri + "/"):
-                frag_ref = (item.get("právní-akt-fragment") or {}).get("fragment-id")
-                if frag_ref is not None:
-                    by_section[sec_iri].append({
-                        "fragment_id": frag_ref,
-                        "hierarchie_hex": item.get("znění-fragment-hierarchie-hex") or "",
-                    })
-                break
-    for sec_iri in by_section:
-        by_section[sec_iri].sort(key=lambda x: x["hierarchie_hex"])
+def group_descendants(section_nodes, all_fragments):
+    """V pameti (bez dalsiho stahovani) seskupi fragmenty patrici pod kazdy
+    vrcholovy uzel (paragraf) vcetne jeho samotneho."""
+    by_section = {}
+    for node in section_nodes:
+        node_iri = node["iri"]
+        prefix = node_iri + "/"
+        descendants = [
+            f["fragment_id"] for f in all_fragments
+            if f["iri"] == node_iri or f["iri"].startswith(prefix)
+        ]
+        by_section[node_iri] = descendants
     return by_section
 
 
 def fetch_fragment_texts(all_fragment_ids):
     wanted = set(all_fragment_ids)
-    log(f"-> hledam text pro {len(wanted)} fragmentu ve 004PravniAktFragment")
+    log(f"-> hledam text pro {len(wanted)} fragmentu ve 004PravniAktFragment (1 prochod)")
     stream = fetch_gunzip_stream("004PravniAktFragment.json.gz")
     texts = {}
     for item in ijson.items(stream, "položky.item"):
@@ -212,16 +228,44 @@ def main():
 
     acts = find_target_acts()
     log(f"Nalezeno {len(acts)} z {len(TARGET_CITATIONS)} pozadovanych zakonu")
+    if not acts:
+        log("Nic k zpracovani, konec.")
+        return
 
+    version_iri_by_citace = {}
     for citace, act in acts.items():
-        version_iri = current_version_iri(act)
-        if not version_iri:
+        vi = current_version_iri(act)
+        if vi:
+            version_iri_by_citace[citace] = vi
+        else:
             log(f"! {citace}: nenalezena aktualni verze, preskakuji")
-            continue
-        log(f"--- {citace} ({act.get('akt-název-vyhlášený')}) verze {version_iri}")
 
+    version_iris = list(version_iri_by_citace.values())
+    log(f"-> jeden prochod 003 pro {len(version_iris)} verzi soucasne")
+    section_nodes_by_version, all_fragments_by_version = scan_version_fragments(version_iris)
+
+    # Omez na bezpecnostni limit pred dotazovanim textu/embeddingu
+    for v in section_nodes_by_version:
+        total = len(section_nodes_by_version[v])
+        section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_CHUNKS_PER_ACT]
+        log(f"   verze {v}: nalezeno {total} paragrafu, zpracuji prvnich {len(section_nodes_by_version[v])}")
+
+    # V pameti seskupit potomky (bez dalsiho stahovani) + posbirat vsechna potrebna fragment-id
+    by_section_by_version = {}
+    all_needed_fragment_ids = set()
+    for v in version_iris:
+        by_section = group_descendants(section_nodes_by_version[v], all_fragments_by_version[v])
+        by_section_by_version[v] = by_section
+        for ids in by_section.values():
+            all_needed_fragment_ids.update(ids)
+
+    texts_by_id = fetch_fragment_texts(all_needed_fragment_ids)
+
+    for citace, version_iri in version_iri_by_citace.items():
+        act = acts[citace]
         title = act.get("akt-název-vyhlášený") or citace
-        doc_url = "https://e-sbirka.cz" + version_iri.split("esel-esb:eli/cz")[-1] if "eli/cz" in version_iri else None
+        doc_url = ("https://e-sbirka.cz" + version_iri.split("esel-esb:eli/cz")[-1]
+                   if "eli/cz" in version_iri else None)
 
         docs = supabase_upsert(
             "documents",
@@ -238,17 +282,12 @@ def main():
         )
         document_id = docs[0]["id"]
 
-        section_nodes = find_section_nodes(version_iri)
-        log(f"   nalezeno {len(section_nodes)} paragrafu, zpracuji prvnich {MAX_CHUNKS_PER_ACT} (bezpecnostni limit)")
-        section_nodes = section_nodes[:MAX_CHUNKS_PER_ACT]
-
-        by_section = find_descendant_fragment_ids(version_iri, section_nodes)
-        all_ids = [fid["fragment_id"] for ids in by_section.values() for fid in ids]
-        texts_by_id = fetch_fragment_texts(all_ids)
+        section_nodes = section_nodes_by_version[version_iri]
+        by_section = by_section_by_version[version_iri]
 
         chunk_rows = []
         for idx, node in enumerate(section_nodes):
-            frag_ids = [f["fragment_id"] for f in by_section.get(node["iri"], [])]
+            frag_ids = by_section.get(node["iri"], [])
             parts = [texts_by_id[fid] for fid in frag_ids if fid in texts_by_id]
             content = " ".join(parts).strip()
             if not content:
@@ -262,12 +301,9 @@ def main():
                 "heading": node["citace"],
                 "content": content,
                 "embedding": embedding,
-                "url": None,
             })
 
         if chunk_rows:
-            for row in chunk_rows:
-                row.pop("url", None)
             supabase_upsert("chunks", chunk_rows, on_conflict="document_id,chunk_index")
             log(f"   ulozeno {len(chunk_rows)} useku pro {citace}")
 
