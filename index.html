@@ -490,14 +490,16 @@ async function loadAdminList() {
     btnApprove.className = 'small';
     btnApprove.textContent = 'Schválit';
     btnApprove.onclick = async () => {
-      await supabase.from('profiles').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', p.id);
+      const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'approved' });
+      if (error) { alert('Chyba při schvalování: ' + error.message); return; }
       loadAdminList();
     };
     const btnReject = document.createElement('button');
     btnReject.className = 'small secondary';
     btnReject.textContent = 'Zamítnout';
     btnReject.onclick = async () => {
-      await supabase.from('profiles').update({ status: 'rejected' }).eq('id', p.id);
+      const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'rejected' });
+      if (error) { alert('Chyba při zamítání: ' + error.message); return; }
       loadAdminList();
     };
     row.appendChild(btnApprove);
