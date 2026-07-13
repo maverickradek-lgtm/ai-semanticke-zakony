@@ -18,6 +18,7 @@ Zadna registrace/API klic neni potreba - jde o volne dostupna otevrena data.
 import gzip
 import json
 import os
+import re
 import sys
 import time
 
@@ -100,7 +101,10 @@ def scan_version_fragments(version_iris):
                     "hierarchie_hex": hierarchie_hex,
                 })
             cit = item.get("znění-fragment-citace")
-            if cit and cit.startswith("§"):
+            # jen skutecne vrcholove paragrafy (napr. '§ 3', '§ 3a'), NE jejich
+            # vnitrni odstavce/pismena (napr. '§ 3 odst. 2', '§ 3 odst. 2 písm. a)')
+            # - ty vlastni text nenesou, cely text paragrafu uz je v jeho vrcholovem uzlu
+            if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
                 section_nodes[v].append({
                     "iri": iri,
                     "citace": cit,
