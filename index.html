@@ -164,12 +164,14 @@
       <div class="sources" id="answer-sources"></div>
     </div>
 
-    <div class="card" id="admin-card" hidden>
-      <h2>Administrace – čekající na schválení</h2>
-      <div id="admin-list" class="muted">Načítám…</div>
-    </div>
-
     </div><!-- /dashboard-view -->
+
+    <div id="admin-view" class="hidden">
+      <div class="card">
+        <h2>Administrace – čekající na schválení</h2>
+        <div id="admin-list" class="muted">Načítám…</div>
+      </div>
+    </div><!-- /admin-view -->
 
     <div id="settings-view" class="hidden">
 
@@ -255,7 +257,7 @@ async function callFn(name, body) {
   return json;
 }
 
-async function refreshHeader(approved) {
+async function refreshHeader(approved, isAdmin) {
   const { data: { session } } = await supabase.auth.getSession();
   const actions = $('header-actions');
   if (session) {
@@ -263,6 +265,7 @@ async function refreshHeader(approved) {
       ? `<div class="row">
            <button class="secondary small" id="btn-nav-dashboard">Appka</button>
            <button class="secondary small" id="btn-nav-settings">Nastavení</button>
+           ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
            <button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>
          </div>`
       : `<button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>`;
@@ -270,6 +273,7 @@ async function refreshHeader(approved) {
     if (approved) {
       $('btn-nav-dashboard').onclick = () => showView('dashboard');
       $('btn-nav-settings').onclick = () => showView('settings');
+      if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
     }
   } else {
     actions.innerHTML = '';
@@ -277,10 +281,14 @@ async function refreshHeader(approved) {
 }
 
 function showView(view) {
+  hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view'));
   if (view === 'settings') {
-    hide($('dashboard-view')); show($('settings-view'));
+    show($('settings-view'));
+  } else if (view === 'admin') {
+    show($('admin-view'));
+    loadAdminList();
   } else {
-    show($('dashboard-view')); hide($('settings-view'));
+    show($('dashboard-view'));
   }
 }
 
@@ -297,7 +305,7 @@ async function loadProfile() {
     .eq('id', session.user.id)
     .single();
 
-  await refreshHeader(profile?.status === 'approved');
+  await refreshHeader(profile?.status === 'approved', profile?.is_admin === true);
 
   if (error || !profile) {
     hideAll(); show($('auth-section'));
@@ -324,13 +332,6 @@ async function loadProfile() {
     $('settings-phone').value = profile.phone || '';
     $('settings-current-email').textContent = profile.email || session.user.email;
     $('settings-tier').textContent = profile.tier || 'free';
-
-    if (profile.is_admin) {
-      $('admin-card').hidden = false;
-      loadAdminList();
-    } else {
-      $('admin-card').hidden = true;
-    }
   }
 }
 
@@ -479,7 +480,7 @@ async function loadAdminList() {
     .order('created_at', { ascending: true });
   const list = $('admin-list');
   if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) { list.textContent = 'Žádné čekajlící žádosti.'; return; }
+  if (!data || data.length === 0) { list.textContent = 'Žádné čekajníê žádosti.'; return; }
   list.innerHTML = '';
   data.forEach(p => {
     const row = document.createElement('div');
@@ -487,7 +488,7 @@ async function loadAdminList() {
     row.innerHTML = `<span>${p.email}</span>`;
     const btnApprove = document.createElement('button');
     btnApprove.className = 'small';
-    btnApprove.textContent = 'Schwálit';
+    btnApprove.textContent = 'Schválit';
     btnApprove.onclick = async () => {
       await supabase.from('profiles').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', p.id);
       loadAdminList();
