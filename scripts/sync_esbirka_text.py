@@ -21,9 +21,13 @@ import re
 import sys
 import time
 from datetime import date
+from http.client import IncompleteRead as HTTPIncompleteRead
 
 import ijson
 import requests
+from requests.exceptions import ChunkedEncodingError
+from urllib3.exceptions import IncompleteRead as Urllib3IncompleteRead
+from urllib3.exceptions import ProtocolError
 
 BASE = "https://opendata.eselpoint.gov.cz/datove-sady-esbirka"
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -51,11 +55,29 @@ def log(*a):
     print(*a, flush=True)
 
 
+def _with_retry(fn, max_retries=3, label="Operace"):
+    """Spusti fn(), pri sitovych chybach opakuje s exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except _NETWORK_ERRORS as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 30 * (attempt + 1)
+            log(f"{label} prerusena (pokus {attempt + 1}/{max_retries}), cekam {wait}s: {e}")
+            time.sleep(wait)
+
+
 def fetch_gunzip_stream(path):
     url = f"{BASE}/{path}"
     log(f"-> stahuji {url}")
-    r = SESSION.get(url, stream=True, timeout=1800)
-    r.raise_for_status()
+
+    def _do_request():
+        r = SESSION.get(url, stream=True, timeout=1800)
+        r.raise_for_status()
+        return r
+
+    r = _with_retry(_do_request, label=f"Stahovani {path}")
     return gzip.GzipFile(fileobj=r.raw)
 
 
@@ -224,11 +246,11 @@ def main():
     log("=== Sync e-Sbirka TEXT (faze A): start ===")
     source_id = get_or_create_source()
 
-    valid_citace = find_valid_citace()
+    valid_citace = _with_retry(find_valid_citace, label="Nacteni metadat (006)")
     if not valid_citace:
         log("Nic k zpracovani, konec.")
         return
-    acts = find_acts(valid_citace)
+    acts = _with_retry(lambda: find_acts(valid_citace), label="Nacteni katalogu aktu (002)")
     if not acts:
         log("Nic k zpracovani, konec.")
         return
@@ -243,7 +265,9 @@ def main():
 
     version_iris = list(version_iri_by_citace.values())
     log(f"-> jeden prochod 003 pro {len(version_iris)} verzi soucasne")
-    section_nodes_by_version, all_fragments_by_version = scan_version_fragments(version_iris)
+    section_nodes_by_version, all_fragments_by_version = _with_retry(
+        lambda: scan_version_fragments(version_iris), label="Skenovani fragmentu verzi (003)"
+    )
 
     for v in section_nodes_by_version:
         total = len(section_nodes_by_version[v])
@@ -259,7 +283,10 @@ def main():
         for ids in by_section.values():
             all_needed_fragment_ids.update(ids)
 
-    texts_by_id = fetch_fragment_texts(all_needed_fragment_ids)
+    texts_by_id = _with_retry(
+        lambda: fetch_fragment_texts(all_needed_fragment_ids),
+        label="Nacteni textu fragmentu (004)"
+    )
 
     done = 0
     for citace, version_iri in version_iri_by_citace.items():
