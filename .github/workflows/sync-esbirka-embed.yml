@@ -1,0 +1,28 @@
+name: Sync e-Sbirka - denni dobihani embeddingu (faze B)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  embed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run embedding backfill
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_USER_ID: "2648f5db-bea6-4cac-b490-ad0ec59723df"
+          DAILY_EMBED_BUDGET: "900"
+        run: python scripts/sync_esbirka_embed.py
