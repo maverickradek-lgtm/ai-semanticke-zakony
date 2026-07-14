@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import date
 from http.client import IncompleteRead as HTTPIncompleteRead
@@ -40,7 +41,7 @@ MAX_SECTIONS_PER_ACT = int(os.environ.get("MAX_SECTIONS_PER_ACT", "3000"))
 # cis-esb-podtyp-pravni-akt-polozka -> nas doc_type
 SUBTYPE_TO_DOCTYPE = {
     "ZAKON": "zakon",
-    "ZAKONUST": "zakon",  # ustavni zakon
+    "ZAKONUST": "zakon",      # ustavni zakon
     "VYHLASKA": "vyhlaska",
     "NARIZENI": "narizeni",
     "OPATRSEN": "opatreni",
@@ -51,18 +52,16 @@ SUBTYPE_TO_DOCTYPE = {
 SESSION = requests.Session()
 
 _NETWORK_ERRORS = (
-        HTTPIncompleteRead,
-        Urllib3IncompleteRead,
-        ProtocolError,
-        ChunkedEncodingError,
-        requests.exceptions.ConnectionError,
-        requests.exceptions.ReadTimeout,
+    HTTPIncompleteRead,
+    Urllib3IncompleteRead,
+    ProtocolError,
+    ChunkedEncodingError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ReadTimeout,
 )
-
 
 def log(*a):
     print(*a, flush=True)
-
 
 def _with_retry(fn, max_retries=3, label="Operace"):
     """Spusti fn(), pri sitovych chybach opakuje s exponential backoff."""
@@ -76,18 +75,85 @@ def _with_retry(fn, max_retries=3, label="Operace"):
             log(f"{label} prerusena (pokus {attempt + 1}/{max_retries}), cekam {wait}s: {e}")
             time.sleep(wait)
 
+def _download_with_resume(url, tmp_path, max_retries=50):
+    """Stahne soubor do tmp_path s podporou resume pres HTTP Range requests.
+    Pri preruseni TCP spojeni pokracuje od mista kde skoncil, ne od zacatku.
+    Vhodne pro velke soubory (napr. 003PravniAktZneniFragment.json.gz ~ 1.16 GB)
+    kde server opendata.eselpoint.gov.cz prerusuji spojeni po 5-30 MB."""
+    for attempt in range(max_retries):
+        existing_size = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+        headers = {}
+        if existing_size > 0:
+            headers['Range'] = f'bytes={existing_size}-'
+            log(f'  Resume od {existing_size:,} B (pokus {attempt + 1}/{max_retries})')
+
+        try:
+            with SESSION.get(url, headers=headers, stream=True, timeout=1800) as r:
+                if r.status_code == 416:
+                    # Range Not Satisfiable - soubor je uz kompletni
+                    log(f'  Status 416: soubor je kompletni ({os.path.getsize(tmp_path):,} B)')
+                    return
+
+                r.raise_for_status()
+
+                # Zjisti celkovou velikost souboru
+                content_range = r.headers.get('Content-Range', '')
+                total = None
+                if content_range:
+                    try:
+                        total = int(content_range.split('/')[-1])
+                    except (ValueError, IndexError):
+                        pass
+                elif 'Content-Length' in r.headers:
+                    total = existing_size + int(r.headers['Content-Length'])
+
+                mode = 'ab' if existing_size > 0 else 'wb'
+                with open(tmp_path, mode) as f:
+                    for chunk in r.iter_content(chunk_size=512 * 1024):  # 512 KB chunks
+                        if chunk:
+                            f.write(chunk)
+
+                current_size = os.path.getsize(tmp_path)
+                if total is None or current_size >= total:
+                    log(f'  Stazeno kompletne: {current_size:,} B')
+                    return
+                else:
+                    log(f'  Preruseno na {current_size:,}/{total:,} B, zkousim znovu...')
+
+        except _NETWORK_ERRORS as e:
+            current_size = os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0
+            log(f'  Chyba na {current_size:,} B: {e}, zkousim znovu...')
+            time.sleep(5)
+            continue
+
+    raise RuntimeError(f"Nepodarilo se stahnout {url} po {max_retries} pokusech")
+
 
 def fetch_gunzip_stream(path):
+    """Stahne .gz soubor s podporou resume a vrati dekomprimovany stream.
+
+    Soubor se nejprve cely stahne do docasneho souboru s podporou HTTP Range
+    requests (pri preruseni pokracuje od mista kde skoncil), pak se otevr
+    jako gzip stream pro ijson. Docasny soubor je okamzite unlinkovany -
+    na Linuxu data zustavaji dostupna pres file descriptor az do zavreni.
+    """
     url = f"{BASE}/{path}"
     log(f"-> stahuji {url}")
 
-    def _do_request():
-        r = SESSION.get(url, stream=True, timeout=1800)
-        r.raise_for_status()
-        return r
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.gz.part')
+    os.close(tmp_fd)
 
-    r = _with_retry(_do_request, label=f"Stahovani {path}")
-    return gzip.GzipFile(fileobj=r.raw)
+    try:
+        _download_with_resume(url, tmp_path)
+        gz = gzip.open(tmp_path, 'rb')
+        # Unlink ihned po otevreni - na Linuxu data zustavaji dostupna
+        # pres file descriptor i po unlink (data se uvolni az pri zavreni fd)
+        os.unlink(tmp_path)
+        return gz
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 def find_valid_citace():
@@ -101,7 +167,7 @@ def find_valid_citace():
     for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 10000 == 0:
-            log(f"   ...prosel {count} zaznamu metadat")
+            log(f"  ...prosel {count} zaznamu metadat")
         if item.get("cis-esb-typ-právní-akt-položka") != "PRAVPRED":
             continue
         if item.get("metadata-datum-zrušení"):
@@ -120,7 +186,6 @@ def find_valid_citace():
     log(f"Nalezeno {len(valid)} aktualne platnych pravnich predpisu (z {count} zaznamu historie)")
     return valid
 
-
 def find_acts(valid_citace):
     """Jeden prochod 002PravniAkt - pro kazdou platnou citaci najde IRI
     aktualniho zneni (potreba pro napojeni na 003/004)."""
@@ -131,21 +196,19 @@ def find_acts(valid_citace):
     for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 10000 == 0:
-            log(f"   ...prosel {count} zaznamu katalogu aktu")
+            log(f"  ...prosel {count} zaznamu katalogu aktu")
         cit = item.get("akt-citace")
         if cit in wanted:
             found[cit] = item
             wanted.discard(cit)
-        if not wanted:
-            break
+            if not wanted:
+                break
     log(f"Sparovano {len(found)} z {len(valid_citace)} platnych predpisu s katalogem aktu")
     return found
-
 
 def current_version_iri(act):
     posledni = act.get("právní-akt-znění-poslední") or {}
     return posledni.get("iri")
-
 
 def scan_version_fragments(version_iris):
     """JEDEN prochod souborem 003 pro VSECHNY pozadovane verze najednou."""
@@ -159,7 +222,7 @@ def scan_version_fragments(version_iris):
     for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 1000000 == 0:
-            log(f"   ...prosel {count} zaznamu 003")
+            log(f"  ...prosel {count} zaznamu 003")
         iri = item.get("iri", "")
         for v, prefix in prefixes.items():
             if not iri.startswith(prefix):
@@ -187,7 +250,6 @@ def scan_version_fragments(version_iris):
 
     return section_nodes, all_fragments
 
-
 def group_descendants(section_nodes, all_fragments):
     by_section = {}
     for node in section_nodes:
@@ -200,7 +262,6 @@ def group_descendants(section_nodes, all_fragments):
         by_section[node_iri] = descendants
     return by_section
 
-
 def fetch_fragment_texts(all_fragment_ids):
     wanted = set(all_fragment_ids)
     log(f"-> hledam text pro {len(wanted)} fragmentu ve 004PravniAktFragment (1 prochod)")
@@ -210,17 +271,16 @@ def fetch_fragment_texts(all_fragment_ids):
     for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 1000000 == 0:
-            log(f"   ...prosel {count} zaznamu 004")
+            log(f"  ...prosel {count} zaznamu 004")
         fid = item.get("fragment-id")
         if fid in wanted:
             t = item.get("fragment-text")
             if t:
                 texts[fid] = t
             wanted.discard(fid)
-        if not wanted:
-            break
+            if not wanted:
+                break
     return texts
-
 
 def supabase_upsert(table, rows, on_conflict):
     if not rows:
@@ -241,7 +301,6 @@ def supabase_upsert(table, rows, on_conflict):
         r.raise_for_status()
     return r.json()
 
-
 def get_or_create_source():
     rows = supabase_upsert(
         "sources",
@@ -249,7 +308,6 @@ def get_or_create_source():
         on_conflict="code",
     )
     return rows[0]["id"]
-
 
 def main():
     log("=== Sync e-Sbirka TEXT (faze A): start ===")
@@ -281,8 +339,8 @@ def main():
     for v in section_nodes_by_version:
         total = len(section_nodes_by_version[v])
         if total > MAX_SECTIONS_PER_ACT:
-            log(f" ! verze {v}: {total} paragrafu presahuje pojistku {MAX_SECTIONS_PER_ACT}, oriznuto")
-        section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_SECTIONS_PER_ACT]
+            log(f"  ! verze {v}: {total} paragrafu presahuje pojistku {MAX_SECTIONS_PER_ACT}, oriznuto")
+            section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_SECTIONS_PER_ACT]
 
     by_section_by_version = {}
     all_needed_fragment_ids = set()
@@ -312,7 +370,7 @@ def main():
                 "external_id": citace,
                 "doc_type": meta["doc_type"],
                 "title": title,
-                "issuer": "Sbírka zákonů",
+                "issuer": "Sbírka zákonş",
                 "url": doc_url,
                 "status": "platny",
             }],
@@ -343,10 +401,9 @@ def main():
 
         done += 1
         if done % 200 == 0:
-            log(f" ...zpracovano {done}/{len(version_iri_by_citace)} predpisu")
+            log(f"  ...zpracovano {done}/{len(version_iri_by_citace)} predpisu")
 
     log(f"=== Sync e-Sbirka TEXT: hotovo, zpracovano {done} predpisu ===")
-
 
 if __name__ == "__main__":
     main()
