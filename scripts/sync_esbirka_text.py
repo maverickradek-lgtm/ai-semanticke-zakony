@@ -14,6 +14,7 @@ Zdroj: https://opendata.eselpoint.gov.cz/datove-sady-esbirka/
 Zadna registrace/API klic neni potreba - jde o volne dostupna otevrena data.
 """
 
+import bisect
 import gzip
 import json
 import os
@@ -213,43 +214,50 @@ def current_version_iri(act):
 def scan_version_fragments(version_iris):
     """JEDEN prochod souborem 003 pro VSECHNY pozadovane verze najednou."""
     stream = fetch_gunzip_stream("003PravniAktZneniFragment.json.gz")
-    prefixes = {v: v + "/" for v in version_iris}
+    sorted_versions = sorted(version_iris)  # Serazene verze pro binarni vyhledavani
 
     section_nodes = {v: [] for v in version_iris}
     all_fragments = {v: [] for v in version_iris}
 
     count = 0
-    for item in ijson.items(stream, "položky.item"):
+    for item in ijson.items(stream, "pol\u016fžky.item"):
         count += 1
-        if count % 1000000 == 0:
+        if count % 1_000_000 == 0:
             log(f"  ...prosel {count} zaznamu 003")
         iri = item.get("iri", "")
-        for v, prefix in prefixes.items():
-            if not iri.startswith(prefix):
-                continue
-            frag_ref = (item.get("právní-akt-fragment") or {}).get("fragment-id")
-            hierarchie_hex = item.get("znění-fragment-hierarchie-hex") or ""
-            if frag_ref is not None:
-                all_fragments[v].append({
-                    "iri": iri,
-                    "fragment_id": frag_ref,
-                    "hierarchie_hex": hierarchie_hex,
-                })
-            cit = item.get("znění-fragment-citace")
-            if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
-                section_nodes[v].append({
-                    "iri": iri,
-                    "citace": cit,
-                    "hierarchie_hex": hierarchie_hex,
-                })
-            break
+        if not iri:
+            continue
+
+        # O(log n) binarni vyhledavani misto O(n) linearniho pruchodu
+        idx = bisect.bisect_right(sorted_versions, iri) - 1
+        if idx < 0:
+            continue
+        v = sorted_versions[idx]
+        if not iri.startswith(v + "/"):
+            continue
+
+        # Nalezena shoda - zpracuj zaznam
+        frag_ref = (item.get("pr\u00e1vn\u00ed-akt-fragment") or {}).get("fragment-id")
+        hierarchie_hex = item.get("zn\u011bn\u00ed-fragment-hierarchie-hex") or ""
+        if frag_ref is not None:
+            all_fragments[v].append({
+                "iri": iri,
+                "fragment_id": frag_ref,
+                "hierarchie_hex": hierarchie_hex,
+            })
+        cit = item.get("zn\u011bn\u00ed-fragment-citace")
+        if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
+            section_nodes[v].append({
+                "iri": iri,
+                "citace": cit,
+                "hierarchie_hex": hierarchie_hex,
+            })
 
     for v in version_iris:
         section_nodes[v].sort(key=lambda n: n["hierarchie_hex"])
         all_fragments[v].sort(key=lambda f: f["hierarchie_hex"])
 
     return section_nodes, all_fragments
-
 def group_descendants(section_nodes, all_fragments):
     by_section = {}
     for node in section_nodes:
