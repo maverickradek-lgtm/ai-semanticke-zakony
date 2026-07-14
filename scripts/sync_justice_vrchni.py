@@ -15,25 +15,39 @@ Beh: kazdy den se prochazi jen poslednich BACKFILL_DAYS dni (kvuli
 prekryvu a pripadnym pozdejsim opravam/publikacim), diky upsertu na
 (source_id, external_id) je import idempotentni. Pro prvni velky historicky
 naplneni lze BACKFILL_DAYS docasne zvysit (viz workflow_dispatch input).
+
+Jednotlive dokumenty (fetch textu + zapis do DB) se zpracovavaji soubezne
+pres MAX_WORKERS vlaken, protoze jde o cistou I/O cekaci praci (HTTP) -
+diky tomu je import radove rychlejsi nez sekvencni zpracovani.
 """
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
+from threading import Lock
 
 import requests
+from requests.adapters import HTTPAdapter
 
 BASE = "https://rozhodnuti.justice.cz/api"
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 BACKFILL_DAYS = int(os.environ.get("BACKFILL_DAYS", "5"))
 MAX_CHARS_PER_CHUNK = int(os.environ.get("MAX_CHARS_PER_CHUNK", "4000"))
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "8"))
 
 SESSION = requests.Session()
+_adapter = HTTPAdapter(pool_connections=MAX_WORKERS * 2, pool_maxsize=MAX_WORKERS * 2)
+SESSION.mount("https://", _adapter)
+SESSION.mount("http://", _adapter)
+
+_log_lock = Lock()
 
 
 def log(*a):
-    print(*a, flush=True)
+    with _log_lock:
+        print(*a, flush=True)
 
 
 def _get(url, params=None, max_retries=5):
@@ -127,43 +141,25 @@ def split_into_chunks(text, max_chars):
     return chunks or ([text[:max_chars]] if text else [])
 
 
-def main():
-    log("=== Sync judikatura (Vrchni soudy): start ===")
-    log(f"BACKFILL_DAYS = {BACKFILL_DAYS}")
-    source_id = get_or_create_source()
-
-    today = date.today()
-    dates = [today - timedelta(days=i) for i in range(BACKFILL_DAYS)]
-
-    matched = []
-    for d in dates:
-        items = fetch_day(d)
-        day_vrchni = [i for i in items if "Vrchn\u00ed soud" in (i.get("soud") or "")]
-        matched.extend(day_vrchni)
-        log(f"{d.isoformat()}: {len(items)} zaznamu celkem, {len(day_vrchni)} od vrchnich soudu")
-
-    log(f"Celkem k importu: {len(matched)} rozhodnuti vrchnich soudu")
-
-    imported = 0
-    skipped = 0
-    for item in matched:
+def process_item(item, source_id):
+    """Zpracuje jedno rozhodnuti: stahne text a zapise do Supabase.
+    Vraci 'imported' / 'skipped' / 'error' - nikdy nevyhazuje vyjimku ven,
+    aby jedna spatna polozka nezastavila cely dychove-basen zpracovani."""
+    try:
         odkaz = item.get("odkaz")
         if not odkaz:
-            skipped += 1
-            continue
+            return "skipped"
         external_id = odkaz.rstrip("/").rsplit("/", 1)[-1]
 
         doc = _get(odkaz)
         if not doc:
-            skipped += 1
-            continue
+            return "skipped"
 
         verdict = (doc.get("verdictText") or "").strip()
         justification = (doc.get("justificationText") or "").strip()
         full_text = (verdict + "\n\n" + justification).strip()
         if not full_text:
-            skipped += 1
-            continue
+            return "skipped"
 
         title = (str(item.get("soud", "")) + " - " + str(item.get("jednaciCislo", ""))).strip(" -")
 
@@ -195,11 +191,49 @@ def main():
             for i, c in enumerate(chunk_texts)
         ]
         supabase_upsert("chunks", chunk_rows, on_conflict="document_id,chunk_index")
-        imported += 1
-        if imported % 20 == 0:
-            log(f"  ...importovano {imported}/{len(matched)}")
+        return "imported"
+    except Exception as e:
+        log(f"  chyba pri zpracovani polozky: {e}")
+        return "error"
 
-    log(f"=== Hotovo: importovano {imported}, preskoceno {skipped} ===")
+
+def main():
+    log("=== Sync judikatura (Vrchni soudy): start ===")
+    log(f"BACKFILL_DAYS={BACKFILL_DAYS}, MAX_WORKERS={MAX_WORKERS}")
+    source_id = get_or_create_source()
+
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(BACKFILL_DAYS)]
+
+    matched = []
+    for d in dates:
+        items = fetch_day(d)
+        day_vrchni = [i for i in items if "Vrchn\u00ed soud" in (i.get("soud") or "")]
+        matched.extend(day_vrchni)
+        log(f"{d.isoformat()}: {len(items)} zaznamu celkem, {len(day_vrchni)} od vrchnich soudu")
+
+    log(f"Celkem k importu: {len(matched)} rozhodnuti vrchnich soudu")
+
+    imported = 0
+    skipped = 0
+    errors = 0
+    done_count = 0
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(process_item, item, source_id) for item in matched]
+        for fut in as_completed(futures):
+            result = fut.result()
+            done_count += 1
+            if result == "imported":
+                imported += 1
+            elif result == "error":
+                errors += 1
+            else:
+                skipped += 1
+            if done_count % 50 == 0:
+                log(f"  ...zpracovano {done_count}/{len(matched)} (importovano {imported})")
+
+    log(f"=== Hotovo: importovano {imported}, preskoceno {skipped}, chyb {errors} ===")
 
 
 if __name__ == "__main__":
