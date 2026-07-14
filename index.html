@@ -177,6 +177,35 @@
       </div>
     </div><!-- /admin-view -->
 
+    <div id="database-view" class="hidden">
+      <div class="card">
+        <h2>Přehled databáze</h2>
+        <div id="db-stats" class="muted">Načítám…</div>
+      </div>
+      <div class="card">
+        <div class="row" style="margin-bottom:14px;">
+          <input type="text" id="db-search" placeholder="Hledat v názvech…" style="flex:1; margin-bottom:0;" />
+          <select id="db-type-filter" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel-2); color:var(--text);">
+            <option value="">Vše</option>
+            <option value="zakon">Zákon</option>
+            <option value="vyhlaska">Vyhláška</option>
+            <option value="narizeni">Nařízení</option>
+            <option value="opatreni">Opatření</option>
+            <option value="dekret">Dekret</option>
+            <option value="judikat">Judikát</option>
+            <option value="jiny_predpis">Jiný předpis</option>
+          </select>
+          <button id="btn-db-search" class="secondary">Hledat</button>
+        </div>
+        <div id="db-list" class="muted">Načítám…</div>
+        <div class="row" style="margin-top:14px;">
+          <button id="btn-db-prev" class="secondary small">Předchozí</button>
+          <span id="db-page-info" class="muted"></span>
+          <button id="btn-db-next" class="secondary small">Další</button>
+        </div>
+      </div>
+    </div><!-- /database-view -->
+
     <div id="settings-view" class="hidden">
 
       <div class="card">
@@ -273,6 +302,7 @@ async function refreshHeader(approved, isAdmin) {
     actions.innerHTML = approved
       ? `<div class="row">
            <button class="secondary small" id="btn-nav-dashboard">Appka</button>
+           <button class="secondary small" id="btn-nav-database">Databáze</button>
            <button class="secondary small" id="btn-nav-settings">Nastavení</button>
            ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
            <button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>
@@ -283,6 +313,7 @@ async function refreshHeader(approved, isAdmin) {
       $('btn-nav-dashboard').onclick = () => showView('dashboard');
       $('btn-nav-settings').onclick = () => showView('settings');
       if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
+      $('btn-nav-database').onclick = () => showView('database');
     }
   } else {
     actions.innerHTML = '';
@@ -290,13 +321,17 @@ async function refreshHeader(approved, isAdmin) {
 }
 
 function showView(view) {
-  hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view'));
+  hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view'));
   if (view === 'settings') {
     show($('settings-view'));
   } else if (view === 'admin') {
     show($('admin-view'));
     loadAdminList();
     loadApprovedList();
+  } else if (view === 'database') {
+    show($('database-view'));
+    loadDatabaseStats();
+    loadDatabaseList(0);
   } else {
     show($('dashboard-view'));
   }
@@ -547,6 +582,75 @@ async function loadApprovedList() {
     list.appendChild(row);
   });
 }
+
+
+let dbPage = 0;
+const DB_PAGE_SIZE = 30;
+
+function docTypeLabel(t) {
+  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné' };
+  return map[t] || t;
+}
+
+async function loadDatabaseStats() {
+  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','jiny_predpis'];
+  const el = $('db-stats');
+  el.textContent = 'Načítám…';
+  const results = await Promise.all(types.map(t =>
+    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t)
+  ));
+  const total = results.reduce((s, r) => s + (r.count || 0), 0);
+  const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`);
+  el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
+}
+
+async function loadDatabaseList(page) {
+  dbPage = page;
+  const list = $('db-list');
+  list.textContent = 'Načítám…';
+  const search = $('db-search').value.trim();
+  const typeFilter = $('db-type-filter').value;
+  let query = supabase
+    .from('documents')
+    .select('id,title,doc_type,issuer,decision_date,url', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
+  if (search) query = query.ilike('title', `%${search}%`);
+  if (typeFilter) query = query.eq('doc_type', typeFilter);
+  const { data, error, count } = await query;
+  if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+  if (!data || data.length === 0) {
+    list.textContent = 'Žádné záznamy.';
+    $('db-page-info').textContent = '';
+    $('btn-db-prev').disabled = true;
+    $('btn-db-next').disabled = true;
+    return;
+  }
+  list.innerHTML = '';
+  data.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'admin-row';
+    const dateStr = d.decision_date ? new Date(d.decision_date).toLocaleDateString('cs-CZ') : '';
+    const metaBits = [docTypeLabel(d.doc_type)];
+    if (d.issuer) metaBits.push(escapeHtml(d.issuer));
+    if (dateStr) metaBits.push(dateStr);
+    row.innerHTML = `<span><strong>${escapeHtml(d.title || '')}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
+    if (d.url) {
+      const a = document.createElement('a');
+      a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
+      row.appendChild(a);
+    }
+    list.appendChild(row);
+  });
+  const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
+  $('db-page-info').textContent = `Strana ${page + 1} / ${totalPages}`;
+  $('btn-db-prev').disabled = page === 0;
+  $('btn-db-next').disabled = page + 1 >= totalPages;
+}
+
+$('btn-db-search').onclick = () => loadDatabaseList(0);
+$('btn-db-prev').onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); };
+$('btn-db-next').onclick = () => loadDatabaseList(dbPage + 1);
 
 loadProfile();
 </script>
