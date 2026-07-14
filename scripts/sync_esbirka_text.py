@@ -1,0 +1,316 @@
+"""
+FAZE A: hromadny import SYROVEHO TEXTU vsech aktualne platnych ceskych
+pravnich predpisu (zakony, ustavni zakony, vyhlasky, narizeni vlady,
+opatreni, historicke dekrety prezidenta republiky - vse, co e-Sbirka eviduje
+jako typ "pravni predpis" a NENI zruseno/jiz neucinne) z otevrenych dat
+e-Sbirky do Supabase (documents + chunks).
+
+DULEZITE: tato faze NEPOCITA embeddingy (to dela az sync_esbirka_embed.py na
+denni bazi, protoze bezplatny Gemini klic ma denni limit poctu volani).
+Radky v "chunks" se tedy ukladaji s embedding = NULL a doplni se pozdeji -
+diky tomu se text objevi v databazi rychle, bez cekani na embedding limit.
+
+Zdroj: https://opendata.eselpoint.gov.cz/datove-sady-esbirka/
+Zadna registrace/API klic neni potreba - jde o volne dostupna otevrena data.
+"""
+
+import gzip
+import json
+import os
+import re
+import sys
+import time
+from datetime import date
+
+import ijson
+import requests
+
+BASE = "https://opendata.eselpoint.gov.cz/datove-sady-esbirka"
+SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
+SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
+# Bezpecnostni pojistka proti patologickym pripadum (mel by byt vzdy vyssi
+# nez realny pocet paragrafu i u nejvetsich zakoniku)
+MAX_SECTIONS_PER_ACT = int(os.environ.get("MAX_SECTIONS_PER_ACT", "3000"))
+
+# cis-esb-podtyp-pravni-akt-polozka -> nas doc_type
+SUBTYPE_TO_DOCTYPE = {
+    "ZAKON": "zakon",
+    "ZAKONUST": "zakon",  # ustavni zakon
+    "VYHLASKA": "vyhlaska",
+    "NARIZENI": "narizeni",
+    "OPATRSEN": "opatreni",
+    "DEKRET": "dekret",
+    "DEKRETUST": "dekret",
+}
+
+SESSION = requests.Session()
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+def fetch_gunzip_stream(path):
+    url = f"{BASE}/{path}"
+    log(f"-> stahuji {url}")
+    r = SESSION.get(url, stream=True, timeout=1800)
+    r.raise_for_status()
+    return gzip.GzipFile(fileobj=r.raw)
+
+
+def find_valid_citace():
+    """Nacte 006PravniAktMetadata a vrati mnozinu citaci aktualne platnych
+    pravnich predpisu (typ PRAVPRED, neni zruseno, ucinnost nekonci v
+    minulosti) spolu s jejich podtypem pro urceni doc_type."""
+    stream = fetch_gunzip_stream("006PravniAktMetadata.json.gz")
+    today = date.today().isoformat()
+    valid = {}
+    count = 0
+    for item in ijson.items(stream, "položky.item"):
+        count += 1
+        if count % 10000 == 0:
+            log(f"   ...prosel {count} zaznamu metadat")
+        if item.get("cis-esb-typ-právní-akt-položka") != "PRAVPRED":
+            continue
+        if item.get("metadata-datum-zrušení"):
+            continue
+        ucinnost_do = item.get("metadata-datum-účinnosti-do")
+        if ucinnost_do and ucinnost_do <= today:
+            continue
+        cit = item.get("akt-citace") or item.get("metadata-citace")
+        if not cit:
+            continue
+        subtype = item.get("cis-esb-podtyp-právní-akt-položka")
+        valid[cit] = {
+            "doc_type": SUBTYPE_TO_DOCTYPE.get(subtype, "jiny_predpis"),
+            "title": item.get("metadata-název") or item.get("akt-název-vyhlášený") or cit,
+        }
+    log(f"Nalezeno {len(valid)} aktualne platnych pravnich predpisu (z {count} zaznamu historie)")
+    return valid
+
+
+def find_acts(valid_citace):
+    """Jeden prochod 002PravniAkt - pro kazdou platnou citaci najde IRI
+    aktualniho zneni (potreba pro napojeni na 003/004)."""
+    stream = fetch_gunzip_stream("002PravniAkt.json.gz")
+    wanted = set(valid_citace.keys())
+    found = {}
+    count = 0
+    for item in ijson.items(stream, "položky.item"):
+        count += 1
+        if count % 10000 == 0:
+            log(f"   ...prosel {count} zaznamu katalogu aktu")
+        cit = item.get("akt-citace")
+        if cit in wanted:
+            found[cit] = item
+            wanted.discard(cit)
+        if not wanted:
+            break
+    log(f"Sparovano {len(found)} z {len(valid_citace)} platnych predpisu s katalogem aktu")
+    return found
+
+
+def current_version_iri(act):
+    posledni = act.get("právní-akt-znění-poslední") or {}
+    return posledni.get("iri")
+
+
+def scan_version_fragments(version_iris):
+    """JEDEN prochod souborem 003 pro VSECHNY pozadovane verze najednou."""
+    stream = fetch_gunzip_stream("003PravniAktZneniFragment.json.gz")
+    prefixes = {v: v + "/" for v in version_iris}
+
+    section_nodes = {v: [] for v in version_iris}
+    all_fragments = {v: [] for v in version_iris}
+
+    count = 0
+    for item in ijson.items(stream, "položky.item"):
+        count += 1
+        if count % 1000000 == 0:
+            log(f"   ...prosel {count} zaznamu 003")
+        iri = item.get("iri", "")
+        for v, prefix in prefixes.items():
+            if not iri.startswith(prefix):
+                continue
+            frag_ref = (item.get("právní-akt-fragment") or {}).get("fragment-id")
+            hierarchie_hex = item.get("znění-fragment-hierarchie-hex") or ""
+            if frag_ref is not None:
+                all_fragments[v].append({
+                    "iri": iri,
+                    "fragment_id": frag_ref,
+                    "hierarchie_hex": hierarchie_hex,
+                })
+            cit = item.get("znění-fragment-citace")
+            if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
+                section_nodes[v].append({
+                    "iri": iri,
+                    "citace": cit,
+                    "hierarchie_hex": hierarchie_hex,
+                })
+            break
+
+    for v in version_iris:
+        section_nodes[v].sort(key=lambda n: n["hierarchie_hex"])
+        all_fragments[v].sort(key=lambda f: f["hierarchie_hex"])
+
+    return section_nodes, all_fragments
+
+
+def group_descendants(section_nodes, all_fragments):
+    by_section = {}
+    for node in section_nodes:
+        node_iri = node["iri"]
+        prefix = node_iri + "/"
+        descendants = [
+            f["fragment_id"] for f in all_fragments
+            if f["iri"] == node_iri or f["iri"].startswith(prefix)
+        ]
+        by_section[node_iri] = descendants
+    return by_section
+
+
+def fetch_fragment_texts(all_fragment_ids):
+    wanted = set(all_fragment_ids)
+    log(f"-> hledam text pro {len(wanted)} fragmentu ve 004PravniAktFragment (1 prochod)")
+    stream = fetch_gunzip_stream("004PravniAktFragment.json.gz")
+    texts = {}
+    count = 0
+    for item in ijson.items(stream, "položky.item"):
+        count += 1
+        if count % 1000000 == 0:
+            log(f"   ...prosel {count} zaznamu 004")
+        fid = item.get("fragment-id")
+        if fid in wanted:
+            t = item.get("fragment-text")
+            if t:
+                texts[fid] = t
+            wanted.discard(fid)
+        if not wanted:
+            break
+    return texts
+
+
+def supabase_upsert(table, rows, on_conflict):
+    if not rows:
+        return []
+    r = SESSION.post(
+        f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={on_conflict}",
+        headers={
+            "apikey": SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=representation",
+        },
+        json=rows,
+        timeout=120,
+    )
+    if not r.ok:
+        log("Supabase chyba:", r.status_code, r.text[:500])
+        r.raise_for_status()
+    return r.json()
+
+
+def get_or_create_source():
+    rows = supabase_upsert(
+        "sources",
+        [{"code": "esbirka", "name": "e-Sbirka", "base_url": "https://opendata.eselpoint.gov.cz"}],
+        on_conflict="code",
+    )
+    return rows[0]["id"]
+
+
+def main():
+    log("=== Sync e-Sbirka TEXT (faze A): start ===")
+    source_id = get_or_create_source()
+
+    valid_citace = find_valid_citace()
+    if not valid_citace:
+        log("Nic k zpracovani, konec.")
+        return
+    acts = find_acts(valid_citace)
+    if not acts:
+        log("Nic k zpracovani, konec.")
+        return
+
+    version_iri_by_citace = {}
+    for citace, act in acts.items():
+        vi = current_version_iri(act)
+        if vi:
+            version_iri_by_citace[citace] = vi
+        else:
+            log(f"! {citace}: nenalezena aktualni verze, preskakuji")
+
+    version_iris = list(version_iri_by_citace.values())
+    log(f"-> jeden prochod 003 pro {len(version_iris)} verzi soucasne")
+    section_nodes_by_version, all_fragments_by_version = scan_version_fragments(version_iris)
+
+    for v in section_nodes_by_version:
+        total = len(section_nodes_by_version[v])
+        if total > MAX_SECTIONS_PER_ACT:
+            log(f" ! verze {v}: {total} paragrafu presahuje pojistku {MAX_SECTIONS_PER_ACT}, oriznuto")
+        section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_SECTIONS_PER_ACT]
+
+    by_section_by_version = {}
+    all_needed_fragment_ids = set()
+    for v in version_iris:
+        by_section = group_descendants(section_nodes_by_version[v], all_fragments_by_version[v])
+        by_section_by_version[v] = by_section
+        for ids in by_section.values():
+            all_needed_fragment_ids.update(ids)
+
+    texts_by_id = fetch_fragment_texts(all_needed_fragment_ids)
+
+    done = 0
+    for citace, version_iri in version_iri_by_citace.items():
+        act = acts[citace]
+        meta = valid_citace[citace]
+        title = meta["title"]
+        doc_url = ("https://e-sbirka.cz" + version_iri.split("esel-esb:eli/cz")[-1]
+                   if "eli/cz" in version_iri else None)
+
+        docs = supabase_upsert(
+            "documents",
+            [{
+                "source_id": source_id,
+                "external_id": citace,
+                "doc_type": meta["doc_type"],
+                "title": title,
+                "issuer": "Sbírka zákonů",
+                "url": doc_url,
+                "status": "platny",
+            }],
+            on_conflict="source_id,external_id",
+        )
+        document_id = docs[0]["id"]
+
+        section_nodes = section_nodes_by_version[version_iri]
+        by_section = by_section_by_version[version_iri]
+
+        chunk_rows = []
+        for idx, node in enumerate(section_nodes):
+            frag_ids = by_section.get(node["iri"], [])
+            parts = [texts_by_id[fid] for fid in frag_ids if fid in texts_by_id]
+            content = " ".join(parts).strip()
+            if not content:
+                continue
+            chunk_rows.append({
+                "document_id": document_id,
+                "chunk_index": idx,
+                "heading": node["citace"],
+                "content": content,
+                "embedding": None,
+            })
+
+        if chunk_rows:
+            supabase_upsert("chunks", chunk_rows, on_conflict="document_id,chunk_index")
+
+        done += 1
+        if done % 200 == 0:
+            log(f" ...zpracovano {done}/{len(version_iri_by_citace)} predpisu")
+
+    log(f"=== Sync e-Sbirka TEXT: hotovo, zpracovano {done} predpisu ===")
+
+
+if __name__ == "__main__":
+    main()
