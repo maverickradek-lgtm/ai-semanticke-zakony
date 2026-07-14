@@ -101,7 +101,7 @@
 <header>
   <div>
     <h1>AI sémantické zákony</h1>
-    <div class="sub">Vyhledávání v českých zákonech a judikatu�"e</div>
+    <div class="sub">Vyhledávání v českých zákonech a judikatuře</div>
   </div>
   <div id="header-actions"></div>
 </header>
@@ -110,29 +110,29 @@
 
   <!-- AUTH -->
   <div id="auth-section" class="card hidden">
-    <h2 id="auth-title">P�"ihlášení</h2>
+    <h2 id="auth-title">Přihlášení</h2>
     <div id="auth-error" class="error hidden"></div>
     <div id="auth-ok" class="ok-msg hidden"></div>
     <label>E-mail</label>
     <input type="email" id="auth-email" placeholder="vas@email.cz" />
     <label>Heslo</label>
-    <input type="password" id="auth-password" placeholder="⬢⬢⬢⬢⬢⬢⬢⬢" />
+    <input type="password" id="auth-password" placeholder="••••••••" />
     <div class="row">
-      <button id="btn-signin">P�"ihlásit se</button>
-      <button class="secondary" id="btn-signup">Vytvo�"it účet</button>
+      <button id="btn-signin">Přihlásit se</button>
+      <button class="secondary" id="btn-signup">Vytvořit účet</button>
     </div>
   </div>
 
   <!-- PENDING APPROVAL -->
   <div id="pending-section" class="card hidden">
-    <h2>�Reká na schválení <span class="pill pending">pending</span></h2>
-    <p class="muted">Váš účet byl vytvo�"en, ale ješt�: čeká na schválení správcem aplikace. Jakmile bude schválen, stránku stačí obnovit.</p>
+    <h2>Čeká na schválení <span class="pill pending">pending</span></h2>
+    <p class="muted">Váš účet byl vytvořen, ale ještě čeká na schválení správcem aplikace. Jakmile bude schválen, stránku stačí obnovit.</p>
     <button class="secondary" id="btn-logout-pending">Odhlásit se</button>
   </div>
 
   <div id="rejected-section" class="card hidden">
-    <h2>P�"ístup nepovolen <span class="pill rejected">zamítnuto</span></h2>
-    <p class="muted">P�"ístup k této aplikaci vám nebyl (nebo již není) povolen. Pro více informací kontaktujte správce.</p>
+    <h2>Přístup nepovolen <span class="pill rejected">zamítnuto</span></h2>
+    <p class="muted">Přístup k této aplikaci vám nebyl (nebo již není) povolen. Pro více informací kontaktujte správce.</p>
     <button class="secondary" id="btn-logout-rejected">Odhlásit se</button>
   </div>
 
@@ -143,23 +143,23 @@
 
     <div id="no-key-banner" class="card hidden">
       <h2>Chybí Gemini API klíč</h2>
-      <p class="muted">Bez vlastního klíče appka nemůže odpovídat. <a class="link-btn" id="goto-settings-from-banner">P�"ejít do nastavení a klíč vložit</a></p>
+      <p class="muted">Bez vlastního klíče appka nemůže odpovídat. <a class="link-btn" id="goto-settings-from-banner">Přejít do nastavení a klíč vložit</a></p>
     </div>
 
     <div class="card">
       <h2>Dotaz</h2>
-      <input type="text" id="query-input" placeholder="Nap�".: Jaká je výpov�:dní doba u nájmu bytu?" />
+      <input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?" />
       <div class="toggle-row">
         <input type="checkbox" id="web-toggle" />
         <label for="web-toggle" style="margin:0;">Hledat i na webu (mimo naši databázi)</label>
       </div>
       <button id="btn-ask">Zeptat se</button>
       <div id="ask-error" class="error hidden"></div>
-      <div id="ask-spinner" class="spinner hidden">Hledám a p�"ipravuji odpov�:ď⬦</div>
+      <div id="ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
     </div>
 
     <div id="answer-card" class="card hidden">
-      <h2>Odpov�:ď</h2>
+      <h2>Odpověď</h2>
       <div class="answer" id="answer-text"></div>
       <div class="sources" id="answer-sources"></div>
     </div>
@@ -168,23 +168,23 @@
 
     <div id="admin-view" class="hidden">
       <div class="card">
-        <h2>Administrace � čekající na schválení</h2>
-        <div id="admin-list" class="muted">Načítám⬦</div>
+        <h2>Administrace – čekající na schválení</h2>
+        <div id="admin-list" class="muted">Načítám…</div>
       </div>
       <div class="card">
         <h2>Registrovaní uživatelé</h2>
-        <div id="approved-list" class="muted">Načítám⬦</div>
+        <div id="approved-list" class="muted">Načítám…</div>
       </div>
     </div><!-- /admin-view -->
 
     <div id="settings-view" class="hidden">
 
       <div class="card">
-        <h2>�adaje o účtu</h2>
+        <h2>Údaje o účtu</h2>
         <label>Jméno</label>
         <input type="text" id="settings-first-name" placeholder="Jméno" />
-        <label>P�"íjmení</label>
-        <input type="text" id="settings-last-name" placeholder="P�"íjmení" />
+        <label>Příjmení</label>
+        <input type="text" id="settings-last-name" placeholder="Příjmení" />
         <label>Telefon</label>
         <input type="text" id="settings-phone" placeholder="+420 ..." />
         <button id="btn-save-profile">Uložit údaje</button>
@@ -192,28 +192,28 @@
       </div>
 
       <div class="card">
-        <h2>E-mail a p�"ihlášení</h2>
+        <h2>E-mail a přihlášení</h2>
         <p class="muted">Aktuální e-mail: <strong id="settings-current-email"></strong></p>
-        <label>Nový e-mail (nepovinné, pro zm�:nu)</label>
+        <label>Nový e-mail (nepovinné, pro změnu)</label>
         <input type="email" id="settings-new-email" placeholder="novy@email.cz" />
-        <button id="btn-change-email" class="secondary">Zm�:nit e-mail</button>
+        <button id="btn-change-email" class="secondary">Změnit e-mail</button>
         <div id="email-msg" class="ok-msg hidden"></div>
       </div>
 
       <div class="card">
         <h2>Váš tarif</h2>
-        <p class="muted">Aktuální tarif: <span class="pill approved" id="settings-tier">free</span> � appka je zdarma díky vlastnímu Gemini klíči, tarif zatím slouží jen pro budoucí rozlišení funkcí.</p>
+        <p class="muted">Aktuální tarif: <span class="pill approved" id="settings-tier">free</span> — appka je zdarma díky vlastnímu Gemini klíči, tarif zatím slouží jen pro budoucí rozlišení funkcí.</p>
       </div>
 
       <div class="card">
         <h2>Google Gemini API klíč</h2>
-        <p class="muted">Klíč získáte na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovan�:, appka ho používá jen na vaše dotazy.</p>
+        <p class="muted">Klíč získáte na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně, appka ho používá jen na vaše dotazy.</p>
         <div id="settings-key-status" class="muted" style="margin-bottom:10px;"></div>
         <div id="key-input-row" class="hidden">
           <input type="text" id="gemini-key-input" placeholder="Vložte Gemini API klíč" />
           <button id="btn-save-key">Uložit klíč</button>
         </div>
-        <button id="btn-toggle-key-input" class="secondary small">Zm�:nit klíč</button>
+        <button id="btn-toggle-key-input" class="secondary small">Změnit klíč</button>
         <div id="key-msg" class="ok-msg hidden"></div>
       </div>
 
@@ -223,7 +223,7 @@
 
 </main>
 
-<footer>Neposkytujeme právní poradenství � jde o obecné informace z ve�"ejných zdrojů. Vždy si ov�:�"te aktuální zn�:ní u zdroje.</footer>
+<footer>Neposkytujeme právní poradenství – jde o obecné informace z veřejných zdrojů. Vždy si ověřte aktuální znění u zdroje.</footer>
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -249,7 +249,7 @@ async function callFn(name, body) {
     // instead of sending a request with no valid Authorization header.
     await supabase.auth.signOut();
     location.reload();
-    throw new Error('Relace vypraela, pYihlaste se pros�m znovu.');
+    throw new Error('Relace vypršela, přihlaste se prosím znovu.');
   }
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: 'POST',
@@ -335,9 +335,9 @@ async function loadProfile() {
 
     const hasKey = !!profile.gemini_key_secret_id;
     $('no-key-banner').classList.toggle('hidden', hasKey);
-    $('settings-key-status').textContent = hasKey ? '�S Gemini klíč je uložen.' : 'Zatím nemáte uložený Gemini klíč.';
+    $('settings-key-status').textContent = hasKey ? '✓ Gemini klíč je uložen.' : 'Zatím nemáte uložený Gemini klíč.';
     $('key-input-row').classList.toggle('hidden', hasKey ? true : false);
-    $('btn-toggle-key-input').textContent = hasKey ? 'Zm�:nit klíč' : 'Vložit klíč';
+    $('btn-toggle-key-input').textContent = hasKey ? 'Změnit klíč' : 'Vložit klíč';
 
     $('settings-first-name').value = profile.first_name || '';
     $('settings-last-name').value = profile.last_name || '';
@@ -371,7 +371,7 @@ $('btn-change-email').onclick = async () => {
   const newEmail = $('settings-new-email').value.trim();
   if (!newEmail) return;
   const { error } = await supabase.auth.updateUser({ email: newEmail });
-  $('email-msg').textContent = error ? 'Chyba: ' + error.message : 'Potvrzovací e-mail odeslán na starou i novou adresu, potvrďte prosím zm�:nu tam.';
+  $('email-msg').textContent = error ? 'Chyba: ' + error.message : 'Potvrzovací e-mail odeslán na starou i novou adresu, potvrďte prosím změnu tam.';
   $('email-msg').classList.toggle('error', !!error);
   $('email-msg').classList.toggle('ok-msg', !error);
   show($('email-msg'));
@@ -391,13 +391,13 @@ $('btn-signup').onclick = async () => {
   const email = $('auth-email').value.trim();
   const password = $('auth-password').value;
   if (password.length < 6) {
-    $('auth-error').textContent = 'Heslo musí mít alespo�� 6 znaků.';
+    $('auth-error').textContent = 'Heslo musí mít alespoň 6 znaků.';
     show($('auth-error'));
     return;
   }
   const { error } = await supabase.auth.signUp({ email, password });
   if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
-  $('auth-ok').textContent = '�ačet vytvo�"en. Nyní čeká na schválení správcem aplikace.';
+  $('auth-ok').textContent = 'Účet vytvořen. Nyní čeká na schválení správcem aplikace.';
   show($('auth-ok'));
   await loadProfile();
 };
@@ -416,9 +416,9 @@ $('btn-save-key').onclick = async () => {
     $('key-msg').classList.remove('error');
     $('key-msg').classList.add('ok-msg');
     show($('key-msg'));
-    $('settings-key-status').textContent = '�S Gemini klíč je uložen.';
+    $('settings-key-status').textContent = '✓ Gemini klíč je uložen.';
     $('key-input-row').classList.add('hidden');
-    $('btn-toggle-key-input').textContent = 'Zm�:nit klíč';
+    $('btn-toggle-key-input').textContent = 'Změnit klíč';
     $('no-key-banner').classList.add('hidden');
   } catch (e) {
     $('key-msg').textContent = 'Chyba: ' + e.message;
@@ -456,10 +456,10 @@ function renderAnswer(text) {
 }
 
 function sourceRow(s) {
-  const icon = s.type === 'zakon' ? '�xS' : (s.type === 'web' ? '�xR�' : '�a️');
-  const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' � ' + escapeHtml(s.heading) : ''}`;
+  const icon = s.type === 'zakon' ? 'Ὅc' : (s.type === 'web' ? 'ἱ0' : '⚖️');
+  const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
   return s.url
-    ? `<div class="source-item">${label} � <a href="${s.url}" target="_blank" rel="noopener">otev�"ít zdroj</a></div>`
+    ? `<div class="source-item">${label} — <a href="${s.url}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
     : `<div class="source-item">${label}</div>`;
 }
 
@@ -470,14 +470,14 @@ $('btn-ask').onclick = async () => {
   show($('ask-spinner'));
   try {
     const result = await callFn('ai-query', { query, use_web: $('web-toggle').checked });
-    $('answer-text').innerHTML = result.answer ? renderAnswer(result.answer) : '(prázdná odpov�:ď)';
+    $('answer-text').innerHTML = result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)';
     const allSources = [...(result.sources || []), ...(result.web_sources || [])];
     $('answer-sources').innerHTML = allSources.length
       ? allSources.map(sourceRow).join('')
       : '<div class="source-item">Žádné zdroje z databáze ani z webu k tomuto dotazu.</div>';
     show($('answer-card'));
   } catch (e) {
-    $('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' � ' + e.detail : '');
+    $('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
     show($('ask-error'));
   } finally {
     hide($('ask-spinner'));
@@ -492,7 +492,7 @@ async function loadAdminList() {
     .order('created_at', { ascending: true });
   const list = $('admin-list');
   if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) { list.textContent = 'Žádné čekajC�cí žádosti.'; return; }
+  if (!data || data.length === 0) { list.textContent = 'Žádné čekající žádosti.'; return; }
   list.innerHTML = '';
   data.forEach(p => {
     const row = document.createElement('div');
@@ -503,7 +503,7 @@ async function loadAdminList() {
     btnApprove.textContent = 'Schválit';
     btnApprove.onclick = async () => {
       const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'approved' });
-      if (error) { alert('Chyba p�"i schvalování: ' + error.message); return; }
+      if (error) { alert('Chyba při schvalování: ' + error.message); return; }
       loadAdminList();
     };
     const btnReject = document.createElement('button');
@@ -511,7 +511,7 @@ async function loadAdminList() {
     btnReject.textContent = 'Zamítnout';
     btnReject.onclick = async () => {
       const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'rejected' });
-      if (error) { alert('Chyba p�"i zamítání: ' + error.message); return; }
+      if (error) { alert('Chyba při zamítání: ' + error.message); return; }
       loadAdminList();
     };
     row.appendChild(btnApprove);
@@ -535,16 +535,16 @@ async function loadApprovedList() {
     row.className = 'admin-row';
     const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
     const approvedDate = p.approved_at ? new Date(p.approved_at).toLocaleDateString('cs-CZ') : '';
-    row.innerHTML = `<span>${escapeHtml(p.email)}${fullName ? ' � ' + escapeHtml(fullName) : ''}
+    row.innerHTML = `<span>${escapeHtml(p.email)}${fullName ? ' – ' + escapeHtml(fullName) : ''}
       <span class="muted">${approvedDate ? ' (schváleno ' + approvedDate + ')' : ''}${p.is_admin ? ' · admin' : ''}</span></span>`;
     if (!p.is_admin) {
       const btnRevoke = document.createElement('button');
       btnRevoke.className = 'small secondary';
-      btnRevoke.textContent = 'Odebrat p�"ístup';
+      btnRevoke.textContent = 'Odebrat přístup';
       btnRevoke.onclick = async () => {
-        if (!confirm(`Opravdu odebrat p�"ístup uživateli ${p.email}?`)) return;
+        if (!confirm(`Opravdu odebrat přístup uživateli ${p.email}?`)) return;
         const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'revoked' });
-        if (error) { alert('Chyba p�"i odebírání p�"ístupu: ' + error.message); return; }
+        if (error) { alert('Chyba při odebírání přístupu: ' + error.message); return; }
         loadApprovedList();
       };
       row.appendChild(btnRevoke);
