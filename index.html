@@ -171,6 +171,10 @@
         <h2>Administrace – čekající na schválení</h2>
         <div id="admin-list" class="muted">Načítám…</div>
       </div>
+      <div class="card">
+        <h2>Registrovaní uživatelé</h2>
+        <div id="approved-list" class="muted">Načítám…</div>
+      </div>
     </div><!-- /admin-view -->
 
     <div id="settings-view" class="hidden">
@@ -287,6 +291,7 @@ function showView(view) {
   } else if (view === 'admin') {
     show($('admin-view'));
     loadAdminList();
+    loadApprovedList();
   } else {
     show($('dashboard-view'));
   }
@@ -480,7 +485,7 @@ async function loadAdminList() {
     .order('created_at', { ascending: true });
   const list = $('admin-list');
   if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) { list.textContent = 'Žádné čekajníê žádosti.'; return; }
+  if (!data || data.length === 0) { list.textContent = 'Žádné čekajC�cí žádosti.'; return; }
   list.innerHTML = '';
   data.forEach(p => {
     const row = document.createElement('div');
@@ -504,6 +509,39 @@ async function loadAdminList() {
     };
     row.appendChild(btnApprove);
     row.appendChild(btnReject);
+    list.appendChild(row);
+  });
+}
+
+async function loadApprovedList() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('status', 'approved')
+    .order('approved_at', { ascending: false });
+  const list = $('approved-list');
+  if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+  if (!data || data.length === 0) { list.textContent = 'Zatím žádní schválení uživatelé.'; return; }
+  list.innerHTML = '';
+  data.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'admin-row';
+    const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
+    const approvedDate = p.approved_at ? new Date(p.approved_at).toLocaleDateString('cs-CZ') : '';
+    row.innerHTML = `<span>${escapeHtml(p.email)}${fullName ? ' – ' + escapeHtml(fullName) : ''}
+      <span class="muted">${approvedDate ? ' (schváleno ' + approvedDate + ')' : ''}${p.is_admin ? ' · admin' : ''}</span></span>`;
+    if (!p.is_admin) {
+      const btnRevoke = document.createElement('button');
+      btnRevoke.className = 'small secondary';
+      btnRevoke.textContent = 'Odebrat přístup';
+      btnRevoke.onclick = async () => {
+        if (!confirm(`Opravdu odebrat přístup uživateli ${p.email}?`)) return;
+        const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'revoked' });
+        if (error) { alert('Chyba při odebírání přístupu: ' + error.message); return; }
+        loadApprovedList();
+      };
+      row.appendChild(btnRevoke);
+    }
     list.appendChild(row);
   });
 }
