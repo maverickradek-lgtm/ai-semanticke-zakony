@@ -101,7 +101,7 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
 
 def fetch_pending_chunks(limit):
     # Vola RPC misto primeho dotazu na tabulku, protoze poradi zpracovani
-    # uz neni proste "created_at asc" - upreднostnuje se dokumenty s vyssi
+    # uz neni proste "created_at asc" - upřednostnujee dokumenty s vyssi
     # embed_priority (par nejdulezitejsich aktualnich zakonu, napr. obcansky
     # zakonik) a preskakuji se dokumenty se skip_embedding = true (stare
     # jednorazove novely, jejichz obsah uz je vstrebany v aktualnim zneni
