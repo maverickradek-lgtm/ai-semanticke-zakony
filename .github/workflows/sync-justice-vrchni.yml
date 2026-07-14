@@ -1,0 +1,32 @@
+name: Sync judikatura - Vrchni soudy
+
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: "Pocet dnu zpet k importu (pro prvni velky beh zadejte vyssi cislo, napr. 365)"
+        required: false
+        default: "5"
+  schedule:
+    - cron: "30 2 * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run judikatura sync (Vrchni soudy)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '5' }}
+        run: python scripts/sync_justice_vrchni.py
