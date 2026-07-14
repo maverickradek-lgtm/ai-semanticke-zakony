@@ -245,8 +245,6 @@ let currentProfile = null;
 async function callFn(name, body) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
-    // Refresh token expired/invalidated server-side - force a clean re-login
-    // instead of sending a request with no valid Authorization header.
     await supabase.auth.signOut();
     location.reload();
     throw new Error('Relace vypršela, přihlaste se prosím znovu.');
@@ -432,9 +430,6 @@ function escapeHtml(s) {
   return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 
-// Very small, safe markdown-ish renderer: escapes HTML first, then adds
-// bold (**text**), simple bullet lists (lines starting with * or -), and
-// line breaks. Not a full markdown parser, just enough for Gemini's output.
 function renderAnswer(text) {
   const escaped = escapeHtml(text);
   const lines = escaped.split('\n');
