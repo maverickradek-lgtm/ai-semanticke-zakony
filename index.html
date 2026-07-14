@@ -456,7 +456,7 @@ function renderAnswer(text) {
 }
 
 function sourceRow(s) {
-  const icon = s.type === 'zakon' ? 'Ὅc' : (s.type === 'web' ? 'ἱ0' : '⚖️');
+  const icon = s.type === 'zakon' ? '📜' : (s.type === 'web' ? '🌐' : '⚖️');
   const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
   return s.url
     ? `<div class="source-item">${label} — <a href="${s.url}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
