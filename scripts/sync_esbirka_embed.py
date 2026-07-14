@@ -3,14 +3,24 @@ FAZE B: denni dobihajici vypocet embeddingu pro useky (chunks), ktere je
 jeste nemaji (embedding IS NULL) - typicky proto, ze je tam faze A
 (sync_esbirka_text.py) teprve nedavno nahrala.
 
-Bezplatny Gemini klic ma denni limit poctu volani, proto se tu zpracovava
-jen omezena denni davka (DAILY_EMBED_BUDGET) a zbytek pockej na dalsi den -
-tento skript je navrzeny tak, aby bezel na cronu kazdy den a postupne
-dobihal, dokud neni vse ohodnoceno; pak uz jen drzi krok s novinkami.
+Bezplatny Gemini klic ma denni limit poctu volani (RPD - requests per day),
+proto se tu zpracovava jen omezena denni davka (DAILY_EMBED_BUDGET) a zbytek
+pockej na dalsi den - tento skript je navrzeny tak, aby bezel na cronu kazdy
+den a postupne dobihal, dokud neni vse ohodnoceno; pak uz jen drzi krok s
+novinkami.
 
-POZNAMKA: Supabase/PostgREST vraci na jeden dotaz max PAGE_SIZE radku bez
+POZNAMKA 1: Supabase/PostgREST vraci na jeden dotaz max PAGE_SIZE radku bez
 ohledu na pozadovany "limit" parametr, proto se cela denni davka stahuje
 a zpracovava po strankach (viz main()).
+
+POZNAMKA 2: DAILY_EMBED_BUDGET musi zustat pod skutecnym denni kvotou
+free-tier Gemini API pro embeddingy (v praxi kolem 900-1000 pozadavku/den -
+presne cislo Google nezverejnuje a muze se menit). Pokud narazime na
+opakovane 429 chyby i po vycerpani vsech pokusu na jednom useku, znamena
+to, ze je denni kvota jiz vycerpana - dalsi cekani ji stejne neobnovi
+(reset je az o pulnoci pacifickeho casu), takze skript v tom pripade rovnou
+skonci, misto aby zbytecne plytval casem (a GitHub Actions minutami) na
+nekonecne opakovani.
 """
 
 import os
@@ -24,6 +34,10 @@ ADMIN_USER_ID = os.environ["ADMIN_USER_ID"]
 
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
 PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
+
+# Kolik useku po sobe muze selhat (vycerpat vsech 5 pokusu kvuli 429), nez to
+# vyhodnotime jako "denni kvota je pryc" a skoncime rovnou.
+MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "3"))
 
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 768
@@ -54,6 +68,9 @@ def get_admin_gemini_key():
 
 
 def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
+    """Vraci (embedding, quota_exhausted). embedding je None pri selhani;
+    quota_exhausted je True, pokud jsme vycerpali vsechny pokusy kvuli 429
+    (silny signal, ze je denni kvota pryc, ne jen kratkodoby spicak)."""
     for attempt in range(5):
         r = SESSION.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent",
@@ -72,14 +89,14 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
             continue
         if not r.ok:
             log("   embed chyba:", r.status_code, r.text[:300])
-            return None
+            return None, False
         values = r.json()["embedding"]["values"]
         norm = sum(v * v for v in values) ** 0.5
         if norm > 0:
             values = [v / norm for v in values]
-        return values
+        return values, False
     log("   embedding se nepovedlo ziskat po 5 pokusech (rate limit)")
-    return None
+    return None, True
 
 
 def fetch_pending_chunks(limit):
@@ -136,8 +153,10 @@ def main():
     total_done = 0
     total_failed = 0
     remaining = DAILY_EMBED_BUDGET
+    consecutive_quota_failures = 0
+    quota_exhausted = False
 
-    while remaining > 0:
+    while remaining > 0 and not quota_exhausted:
         batch_limit = min(PAGE_SIZE, remaining)
         chunks = fetch_pending_chunks(batch_limit)
         if not chunks:
@@ -150,16 +169,32 @@ def main():
         for c in chunks:
             title = titles.get(c["document_id"], "")
             text = f"{title} {c['heading']}: {c['content']}"
-            embedding = embed_text(text, gemini_key)
+            embedding, quota_hit = embed_text(text, gemini_key)
             if embedding is None:
                 total_failed += 1
+                if quota_hit:
+                    consecutive_quota_failures += 1
+                    if consecutive_quota_failures >= MAX_CONSECUTIVE_QUOTA_FAILURES:
+                        log(
+                            f"Denni kvota Gemini API je nejspis vycerpana "
+                            f"({consecutive_quota_failures}x za sebou selhalo po vsech pokusech) - koncim, "
+                            f"zbytek doplni zitrejsi beh."
+                        )
+                        quota_exhausted = True
+                        break
+                else:
+                    consecutive_quota_failures = 0
                 continue
+            consecutive_quota_failures = 0
             update_chunk_embedding(c["id"], embedding)
             total_done += 1
             if total_done % 100 == 0:
                 log(f" ...ohodnoceno celkem {total_done}")
 
         remaining -= len(chunks)
+
+        if quota_exhausted:
+            break
 
         if len(chunks) < batch_limit:
             log("Posledni neuplna stranka vracena, dalsi kolo by bylo prazdne - koncim.")
