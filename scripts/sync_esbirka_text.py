@@ -50,6 +50,15 @@ SUBTYPE_TO_DOCTYPE = {
 
 SESSION = requests.Session()
 
+_NETWORK_ERRORS = (
+        HTTPIncompleteRead,
+        Urllib3IncompleteRead,
+        ProtocolError,
+        ChunkedEncodingError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ReadTimeout,
+)
+
 
 def log(*a):
     print(*a, flush=True)
