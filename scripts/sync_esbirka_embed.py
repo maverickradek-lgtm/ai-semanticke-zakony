@@ -100,15 +100,20 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
 
 
 def fetch_pending_chunks(limit):
-    r = SESSION.get(
-        f"{SUPABASE_URL}/rest/v1/chunks",
-        headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
-        params={
-            "select": "id,heading,content,document_id",
-            "embedding": "is.null",
-            "order": "created_at.asc",
-            "limit": str(limit),
+    # Vola RPC misto primeho dotazu na tabulku, protoze poradi zpracovani
+    # uz neni proste "created_at asc" - upreднostnuje se dokumenty s vyssi
+    # embed_priority (par nejdulezitejsich aktualnich zakonu, napr. obcansky
+    # zakonik) a preskakuji se dokumenty se skip_embedding = true (stare
+    # jednorazove novely, jejichz obsah uz je vstrebany v aktualnim zneni
+    # zakonu, ktere menily - viz migrace add_embed_priority_and_skip_flag).
+    r = SESSION.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_prioritized",
+        headers={
+            "apikey": SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+            "Content-Type": "application/json",
         },
+        json={"p_limit": limit},
         timeout=60,
     )
     r.raise_for_status()
