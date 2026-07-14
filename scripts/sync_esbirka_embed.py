@@ -7,6 +7,10 @@ Bezplatny Gemini klic ma denni limit poctu volani, proto se tu zpracovava
 jen omezena denni davka (DAILY_EMBED_BUDGET) a zbytek pockej na dalsi den -
 tento skript je navrzeny tak, aby bezel na cronu kazdy den a postupne
 dobihal, dokud neni vse ohodnoceno; pak uz jen drzi krok s novinkami.
+
+POZNAMKA: Supabase/PostgREST vraci na jeden dotaz max PAGE_SIZE radku bez
+ohledu na pozadovany "limit" parametr, proto se cela denni davka stahuje
+a zpracovava po strankach (viz main()).
 """
 
 import os
@@ -19,6 +23,7 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN_USER_ID = os.environ["ADMIN_USER_ID"]
 
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
+PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
 
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 768
@@ -125,31 +130,42 @@ def update_chunk_embedding(chunk_id, embedding):
 
 def main():
     log("=== Embedding dobihani (faze B): start ===")
+    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}")
     gemini_key = get_admin_gemini_key()
 
-    chunks = fetch_pending_chunks(DAILY_EMBED_BUDGET)
-    log(f"Nalezeno {len(chunks)} useku bez embeddingu (limit davky: {DAILY_EMBED_BUDGET})")
-    if not chunks:
-        log("Nic k doplneni, hotovo.")
-        return
+    total_done = 0
+    total_failed = 0
+    remaining = DAILY_EMBED_BUDGET
 
-    titles = fetch_document_titles(list({c["document_id"] for c in chunks}))
+    while remaining > 0:
+        batch_limit = min(PAGE_SIZE, remaining)
+        chunks = fetch_pending_chunks(batch_limit)
+        if not chunks:
+            log("Zadne dalsi useky bez embeddingu, hotovo.")
+            break
 
-    done = 0
-    failed = 0
-    for c in chunks:
-        title = titles.get(c["document_id"], "")
-        text = f"{title} {c['heading']}: {c['content']}"
-        embedding = embed_text(text, gemini_key)
-        if embedding is None:
-            failed += 1
-            continue
-        update_chunk_embedding(c["id"], embedding)
-        done += 1
-        if done % 100 == 0:
-            log(f" ...ohodnoceno {done}/{len(chunks)}")
+        log(f"Stranka: nalezeno {len(chunks)} useku bez embeddingu (zbyva z denni davky: {remaining})")
+        titles = fetch_document_titles(list({c["document_id"] for c in chunks}))
 
-    log(f"=== Embedding dobihani: hotovo, ohodnoceno {done}, selhalo {failed} ===")
+        for c in chunks:
+            title = titles.get(c["document_id"], "")
+            text = f"{title} {c['heading']}: {c['content']}"
+            embedding = embed_text(text, gemini_key)
+            if embedding is None:
+                total_failed += 1
+                continue
+            update_chunk_embedding(c["id"], embedding)
+            total_done += 1
+            if total_done % 100 == 0:
+                log(f" ...ohodnoceno celkem {total_done}")
+
+        remaining -= len(chunks)
+
+        if len(chunks) < batch_limit:
+            log("Posledni neuplna stranka vracena, dalsi kolo by bylo prazdne - koncim.")
+            break
+
+    log(f"=== Embedding dobihani: hotovo, ohodnoceno {total_done}, selhalo {total_failed} ===")
 
 
 if __name__ == "__main__":
