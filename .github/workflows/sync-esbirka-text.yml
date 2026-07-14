@@ -1,0 +1,27 @@
+name: Sync e-Sbirka - text vsech platnych predpisu (faze A)
+
+on:
+  workflow_dispatch: {}
+  # jednou tydne staci - noveho platneho predpisu moc nepribyva
+  schedule:
+    - cron: "0 2 * * 1"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run text sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/sync_esbirka_text.py
