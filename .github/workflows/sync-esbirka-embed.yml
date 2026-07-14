@@ -24,5 +24,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ADMIN_USER_ID: "2648f5db-bea6-4cac-b490-ad0ec59723df"
-          DAILY_EMBED_BUDGET: "900"
+          DAILY_EMBED_BUDGET: "2500"
         run: python scripts/sync_esbirka_embed.py
