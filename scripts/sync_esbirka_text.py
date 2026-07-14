@@ -220,7 +220,7 @@ def scan_version_fragments(version_iris):
     all_fragments = {v: [] for v in version_iris}
 
     count = 0
-    for item in ijson.items(stream, "pol\u016fžky.item"):
+    for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 1_000_000 == 0:
             log(f"  ...prosel {count} zaznamu 003")
