@@ -194,6 +194,7 @@
             <option value="dekret">Dekret</option>
             <option value="judikat">Judikát</option>
             <option value="jiny_predpis">Jiný předpis</option>
+            <option value="rozhodnuti_uohs">Rozhodnutí ÚOHS</option>
           </select>
           <button id="btn-db-search" class="secondary">Hledat</button>
         </div>
@@ -588,7 +589,7 @@ let dbPage = 0;
 const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
-  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné' };
+  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS' };
   return map[t] || t;
 }
 
