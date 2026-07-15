@@ -123,11 +123,40 @@
     </div>
   </div>
 
-  <!-- PENDING APPROVAL -->
-  <div id="pending-section" class="card hidden">
-    <h2>Čeká na schválení <span class="pill pending">pending</span></h2>
-    <p class="muted">Váš účet byl vytvořen, ale ještě čeká na schválení správcem aplikace. Jakmile bude schválen, stránku stačí obnovit.</p>
-    <button class="secondary" id="btn-logout-pending">Odhlásit se</button>
+  <!-- PENDING APPROVAL / ZKUŠEBNÍ PROVOZ -->
+  <div id="pending-section" class="hidden">
+    <div class="card">
+      <h2>Čeká na schválení <span class="pill pending">pending</span></h2>
+      <p class="muted">Váš účet byl vytvořen a čeká na schválení správcem aplikace. Mezitím si appku můžete vyzkoušet ve zkušebním provozu (<span id="trial-remaining-text"></span>).</p>
+      <button class="secondary" id="btn-logout-pending">Odhlásit se</button>
+    </div>
+
+    <div id="trial-key-card" class="card hidden">
+      <h2>Google Gemini API klíč</h2>
+      <p class="muted">Pro zkušební provoz potřebujete vlastní Gemini API klíč, zdarma na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně.</p>
+      <input type="text" id="trial-key-input" placeholder="Vložte Gemini API klíč" />
+      <button id="btn-trial-save-key">Uložit klíč</button>
+      <div id="trial-key-msg" class="ok-msg hidden"></div>
+    </div>
+
+    <div id="trial-query-card" class="card hidden">
+      <h2>Zkušební dotaz</h2>
+      <input type="text" id="trial-query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?" />
+      <button id="btn-trial-ask">Zeptat se</button>
+      <div id="trial-ask-error" class="error hidden"></div>
+      <div id="trial-ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
+    </div>
+
+    <div id="trial-answer-card" class="card hidden">
+      <h2>Odpověď</h2>
+      <div class="answer" id="trial-answer-text"></div>
+      <div class="sources" id="trial-answer-sources"></div>
+    </div>
+
+    <div id="trial-exhausted-card" class="card hidden">
+      <h2>Zkušební provoz vyčerpán</h2>
+      <p class="muted">Vyčerpali jste všech 20 zkušebních dotazů. Počkejte prosím na schválení účtu správcem aplikace.</p>
+    </div>
   </div>
 
   <div id="rejected-section" class="card hidden">
@@ -361,6 +390,7 @@ async function loadProfile() {
 
   if (profile.status === 'pending') {
     hideAll(); show($('pending-section'));
+    renderTrialUI(profile);
   } else if (profile.status === 'rejected' || profile.status === 'revoked') {
     hideAll(); show($('rejected-section'));
   } else if (profile.status === 'approved') {
@@ -653,6 +683,70 @@ async function loadDatabaseList(page) {
 $('btn-db-search').onclick = () => loadDatabaseList(0);
 $('btn-db-prev').onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); };
 $('btn-db-next').onclick = () => loadDatabaseList(dbPage + 1);
+
+const TRIAL_LIMIT = 20;
+
+function renderTrialUI(profile) {
+  const remaining = Math.max(0, TRIAL_LIMIT - (profile.trial_queries_used || 0));
+  $('trial-remaining-text').textContent = `zbývá ${remaining} z ${TRIAL_LIMIT} dotazů`;
+  const hasKey = !!profile.gemini_key_secret_id;
+  hide($('trial-key-card')); hide($('trial-query-card')); hide($('trial-exhausted-card'));
+  if (remaining <= 0) {
+    show($('trial-exhausted-card'));
+  } else if (!hasKey) {
+    show($('trial-key-card'));
+  } else {
+    show($('trial-query-card'));
+  }
+}
+
+$('btn-trial-save-key').onclick = async () => {
+  hide($('trial-key-msg'));
+  const key = $('trial-key-input').value.trim();
+  if (!key) return;
+  try {
+    await callFn('save-gemini-key', { gemini_api_key: key });
+    $('trial-key-input').value = '';
+    $('trial-key-msg').textContent = 'Klíč uložen.';
+    $('trial-key-msg').classList.remove('error');
+    $('trial-key-msg').classList.add('ok-msg');
+    show($('trial-key-msg'));
+    await loadProfile();
+  } catch (e) {
+    $('trial-key-msg').textContent = 'Chyba: ' + e.message;
+    $('trial-key-msg').classList.remove('ok-msg');
+    $('trial-key-msg').classList.add('error');
+    show($('trial-key-msg'));
+  }
+};
+
+$('btn-trial-ask').onclick = async () => {
+  hide($('trial-ask-error')); hide($('trial-answer-card'));
+  const query = $('trial-query-input').value.trim();
+  if (!query) return;
+  show($('trial-ask-spinner'));
+  try {
+    const result = await callFn('ai-query', { query, use_web: false });
+    $('trial-answer-text').innerHTML = result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)';
+    const allSources = [...(result.sources || []), ...(result.web_sources || [])];
+    $('trial-answer-sources').innerHTML = allSources.length
+      ? allSources.map(sourceRow).join('')
+      : '<div class="source-item">Žádné zdroje z databáze k tomuto dotazu.</div>';
+    show($('trial-answer-card'));
+    if (typeof result.trial_remaining === 'number') {
+      $('trial-remaining-text').textContent = `zbývá ${result.trial_remaining} z ${TRIAL_LIMIT} dotazů`;
+      if (result.trial_remaining <= 0) {
+        hide($('trial-query-card'));
+        show($('trial-exhausted-card'));
+      }
+    }
+  } catch (e) {
+    $('trial-ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
+    show($('trial-ask-error'));
+  } finally {
+    hide($('trial-ask-spinner'));
+  }
+};
 
 loadProfile();
 </script>
