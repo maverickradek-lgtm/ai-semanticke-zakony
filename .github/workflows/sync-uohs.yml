@@ -1,0 +1,31 @@
+name: Sync UOHS - rozhodnuti (otevrena data)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Max. pocet novych rozhodnuti k importu v tomto behu"
+        default: "300"
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run UOHS sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAX_ITEMS: ${{ github.event.inputs.max_items || '300' }}
+        run: python scripts/sync_uohs.py
