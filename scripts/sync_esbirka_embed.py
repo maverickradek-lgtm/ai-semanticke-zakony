@@ -17,10 +17,14 @@ POZNAMKA 2: DAILY_EMBED_BUDGET musi zustat pod skutecnym denni kvotou
 free-tier Gemini API pro embeddingy (v praxi kolem 900-1000 pozadavku/den -
 presne cislo Google nezverejnuje a muze se menit). Pokud narazime na
 opakovane 429 chyby i po vycerpani vsech pokusu na jednom useku, znamena
-to, ze je denni kvota jiz vycerpana - dalsi cekani ji stejne neobnovi
-(reset je az o pulnoci pacifickeho casu), takze skript v tom pripade rovnou
-skonci, misto aby zbytecne plytval casem (a GitHub Actions minutami) na
+to, ze je denni kvota pryc, aby nedoslo na
 nekonecne opakovani.
+
+POZNAMKA 3: pokud je nastaveny GEMINI_API_KEY_OVERRIDE (druhy, samostatny
+Gemini klic - napr. z jineho Google uctu), pouzije se rovnou misto klice
+ulozeneho v Supabase pro ADMIN_USER_ID. To umoznuje spustit druhy beh se
+svou vlastni nezavislou denni kvotou soubezne s tim hlavnim - viz
+REVERSE_ORDER, ktery zaridi, aby si oba behy co nejmin prekazely.
 """
 
 import os
@@ -30,13 +34,13 @@ import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-ADMIN_USER_ID = os.environ["ADMIN_USER_ID"]
+ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID", "")
+GEMINI_API_KEY_OVERRIDE = os.environ.get("GEMINI_API_KEY_OVERRIDE", "")
 
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
 PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
+REVERSE_ORDER = os.environ.get("REVERSE_ORDER", "false").lower() == "true"
 
-# Kolik useku po sobe muze selhat (vycerpat vsech 5 pokusu kvuli 429), nez to
-# vyhodnotime jako "denni kvota je pryc" a skoncime rovnou.
 MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "3"))
 
 EMBED_MODEL = "gemini-embedding-001"
@@ -50,6 +54,8 @@ def log(*a):
 
 
 def get_admin_gemini_key():
+    if GEMINI_API_KEY_OVERRIDE:
+        return GEMINI_API_KEY_OVERRIDE
     r = SESSION.post(
         f"{SUPABASE_URL}/rest/v1/rpc/get_user_gemini_key",
         headers={
@@ -68,7 +74,7 @@ def get_admin_gemini_key():
 
 
 def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
-    """Vraci (embedding, quota_exhausted). embedding je None pri selhani;
+    """Vraci (embedding, quota_exhausted); embedding je None pri selhani;
     quota_exhausted je True, pokud jsme vycerpali vsechny pokusy kvuli 429
     (silny signal, ze je denni kvota pryc, ne jen kratkodoby spicak)."""
     for attempt in range(5):
@@ -101,11 +107,15 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
 
 def fetch_pending_chunks(limit):
     # Vola RPC misto primeho dotazu na tabulku, protoze poradi zpracovani
-    # uz neni proste "created_at asc" - upřednostnujee dokumenty s vyssi
+    # uz neni proste "created_at asc" - upřednostnuje dokumenty s vyssi
     # embed_priority (par nejdulezitejsich aktualnich zakonu, napr. obcansky
     # zakonik) a preskakuji se dokumenty se skip_embedding = true (stare
     # jednorazove novely, jejichz obsah uz je vstrebany v aktualnim zneni
     # zakonu, ktere menily - viz migrace add_embed_priority_and_skip_flag).
+    #
+    # REVERSE_ORDER=true (druhy soubezny beh s druhym Gemini klicem) obraci
+    # razeni (nejnizsi priorita/nejnovejsi useky prvni), aby se oba behy co
+    # nejmin prekryvaly a nedelaly zbytecne duplicitni praci.
     r = SESSION.post(
         f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_prioritized",
         headers={
@@ -113,7 +123,7 @@ def fetch_pending_chunks(limit):
             "Authorization": f"Bearer {SERVICE_KEY}",
             "Content-Type": "application/json",
         },
-        json={"p_limit": limit},
+        json={"p_limit": limit, "p_ascending": REVERSE_ORDER},
         timeout=60,
     )
     r.raise_for_status()
@@ -152,7 +162,7 @@ def update_chunk_embedding(chunk_id, embedding):
 
 def main():
     log("=== Embedding dobihani (faze B): start ===")
-    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}")
+    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}")
     gemini_key = get_admin_gemini_key()
 
     total_done = 0
@@ -165,15 +175,17 @@ def main():
         batch_limit = min(PAGE_SIZE, remaining)
         chunks = fetch_pending_chunks(batch_limit)
         if not chunks:
-            log("Zadne dalsi useky bez embeddingu, hotovo.")
+            log("Zadne dalsi useky bez embeddingu.")
             break
 
-        log(f"Stranka: nalezeno {len(chunks)} useku bez embeddingu (zbyva z denni davky: {remaining})")
-        titles = fetch_document_titles(list({c["document_id"] for c in chunks}))
+        document_ids = list(set(c["document_id"] for c in chunks))
+        titles = fetch_document_titles(document_ids)
 
         for c in chunks:
             title = titles.get(c["document_id"], "")
-            text = f"{title} {c['heading']}: {c['content']}"
+            heading = c["heading"]
+            content = c["content"]
+            text = f"{title} {heading}: {content}"
             embedding, quota_hit = embed_text(text, gemini_key)
             if embedding is None:
                 total_failed += 1
