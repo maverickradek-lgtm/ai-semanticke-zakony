@@ -18,6 +18,7 @@ external_id, takze dalsi beh pokracuje tam, kde skoncil predchozi.
 
 import os
 import re
+from datetime import date
 from io import BytesIO
 
 import requests
@@ -29,6 +30,13 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 UOHS_JSONLD_URL = "https://uohs.gov.cz/opendata/rozhodnuti.jsonld"
 MAX_CHARS_PER_CHUNK = int(os.environ.get("MAX_CHARS_PER_CHUNK", "4000"))
 MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "300"))
+
+# Cela historie UOHS od r. 1999 by pri soucasne dennii kvote Gemini embeddingu
+# znamenala tydny az mesice, nez by byla prohledatelna - proto se import
+# omezuje na poslednich CUTOFF_YEARS let (podle data pravni moci). Starsi
+# rozhodnuti muzeme pozdeji doplnit na pozadi, az bude fronta prazdnejsi.
+CUTOFF_YEARS = int(os.environ.get("CUTOFF_YEARS", "10"))
+CUTOFF_DATE = date.today().replace(year=date.today().year - CUTOFF_YEARS).isoformat()
 
 SESSION = requests.Session()
 
@@ -192,7 +200,7 @@ def upsert_document(source_id, item):
 
 def main():
     log("=== UOHS sync: start ===")
-    log(f"MAX_ITEMS={MAX_ITEMS}")
+    log(f"MAX_ITEMS={MAX_ITEMS}, CUTOFF_YEARS={CUTOFF_YEARS} (od {CUTOFF_DATE})")
     source_id = get_or_create_source()
     log("Nacitam existujici external_id z databaze...")
     existing = get_existing_external_ids()
@@ -207,11 +215,16 @@ def main():
 
     imported = 0
     skipped = 0
+    too_old = 0
     errors = 0
     for item in items:
         external_id = item.get("číslo_jednací") or item.get("spisová_značka")
         if not external_id or external_id in existing:
             skipped += 1
+            continue
+        item_date = (item.get("datum_právní_moci") or {}).get("datum")
+        if item_date and item_date < CUTOFF_DATE:
+            too_old += 1
             continue
         if MAX_ITEMS and imported >= MAX_ITEMS:
             log(f"Dosazen MAX_ITEMS={MAX_ITEMS}, koncim (zbytek doplni dalsi beh).")
@@ -231,7 +244,7 @@ def main():
 
     log(
         f"=== UOHS sync: hotovo, naimportovano {imported}, "
-        f"preskoceno {skipped}, chyb {errors} ==="
+        f"preskoceno {skipped}, mimo rozsah let {too_old}, chyb {errors} ==="
     )
 
 
