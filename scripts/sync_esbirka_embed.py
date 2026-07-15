@@ -41,6 +41,12 @@ DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
 PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
 REVERSE_ORDER = os.environ.get("REVERSE_ORDER", "false").lower() == "true"
 
+# Pevna prodleva mezi jednotlivymi pozadavky na embedContent (ne jen reaktivni
+# cekani az PO chybe 429) - drzi tempo pod free-tier RPM stropem, ktery je u
+# embedding modelu casto nizky, a predchazi tomu, aby beh hned od prvniho
+# pozadavku narazel na rate limit kvuli prilis rychlemu odesilani.
+REQUEST_DELAY_SECONDS = float(os.environ.get("REQUEST_DELAY_SECONDS", "2"))
+
 MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "3"))
 
 EMBED_MODEL = "gemini-embedding-001"
@@ -162,7 +168,7 @@ def update_chunk_embedding(chunk_id, embedding):
 
 def main():
     log("=== Embedding dobihani (faze B): start ===")
-    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}")
+    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}, REQUEST_DELAY_SECONDS={REQUEST_DELAY_SECONDS}")
     gemini_key = get_admin_gemini_key()
 
     total_done = 0
@@ -186,6 +192,7 @@ def main():
             heading = c["heading"]
             content = c["content"]
             text = f"{title} {heading}: {content}"
+            time.sleep(REQUEST_DELAY_SECONDS)
             embedding, quota_hit = embed_text(text, gemini_key)
             if embedding is None:
                 total_failed += 1
