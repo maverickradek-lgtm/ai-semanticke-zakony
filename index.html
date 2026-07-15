@@ -463,7 +463,7 @@ $('btn-save-key').onclick = async () => {
 };
 
 function escapeHtml(s) {
-  return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function renderAnswer(text) {
@@ -489,8 +489,9 @@ function renderAnswer(text) {
 function sourceRow(s) {
   const icon = s.type === 'zakon' ? '📜' : (s.type === 'web' ? '🌐' : '⚖️');
   const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
-  return s.url
-    ? `<div class="source-item">${label} — <a href="${s.url}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
+  const safeUrl = s.url && /^https?:\/\//i.test(s.url) ? s.url : null;
+  return safeUrl
+    ? `<div class="source-item">${label} — <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
     : `<div class="source-item">${label}</div>`;
 }
 
@@ -528,7 +529,7 @@ async function loadAdminList() {
   data.forEach(p => {
     const row = document.createElement('div');
     row.className = 'admin-row';
-    row.innerHTML = `<span>${p.email}</span>`;
+    row.innerHTML = `<span>${escapeHtml(p.email || '')}</span>`;
     const btnApprove = document.createElement('button');
     btnApprove.className = 'small';
     btnApprove.textContent = 'Schválit';
