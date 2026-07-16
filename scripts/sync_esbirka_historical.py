@@ -41,8 +41,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 MAX_SECTIONS_PER_ACT = int(os.environ.get("MAX_SECTIONS_PER_ACT", "3000"))
-CUTOFF_YEARS = int(os.environ.get("CUTOFF_YEARS", "5"))
-CUTOFF_DATE = date.today().replace(year=date.today().year - CUTOFF_YEARS).isoformat()
+CUTOFF_DATE = os.environ.get("CUTOFF_DATE", "2020-01-01")
 MAX_VERSIONS_PER_RUN = int(os.environ.get("MAX_VERSIONS_PER_RUN", "500"))
 
 # cis-esb-podtyp-pravni-akt-polozka -> nas doc_type (stejna mapa jako v
@@ -371,7 +370,7 @@ def make_historical_external_id(citace, version_iri):
 
 def main():
     log("=== Sync e-Sbirka HISTORICKA zneni: start ===")
-    log(f"Cutoff: zneni ucinna od {CUTOFF_DATE} ({CUTOFF_YEARS} let zpetne)")
+    log(f"Cutoff: zneni ucinna od {CUTOFF_DATE}")
     source_id = get_or_create_source()
 
     subtypes = _with_retry(load_subtypes, label="Nacteni metadat pro subtypy (006)")
