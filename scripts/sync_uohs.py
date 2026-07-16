@@ -70,7 +70,7 @@ def get_or_create_source():
         json={
             "code": "uohs",
             "name": "Urad pro ochranu hospodarske souteze (UOHS)",
-            "url": UOHS_JSONLD_URL,
+            "base_url": UOHS_JSONLD_URL,
         },
         timeout=30,
     )
