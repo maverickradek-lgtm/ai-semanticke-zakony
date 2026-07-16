@@ -317,6 +317,40 @@ def get_or_create_source():
     )
     return rows[0]["id"]
 
+def get_existing_version_iris(source_id):
+    # Mapa external_id -> naposledy ulozene version_iri, aby slo poznat,
+    # ktere predpisy se OD MINULEHO BEHU vubec zmenily - u nezmenenych se
+    # pak preskakuje prekopirovani useku a hlavne reset embedding=NULL,
+    # ktery by jinak kazdy tyden zbytecne zahodil uz hotovy embedding.
+    result = {}
+    offset = 0
+    page = 1000
+    while True:
+        r = SESSION.get(
+            f"{SUPABASE_URL}/rest/v1/documents",
+            headers={
+                "apikey": SERVICE_KEY,
+                "Authorization": f"Bearer {SERVICE_KEY}",
+            },
+            params={
+                "select": "external_id,version_iri",
+                "source_id": f"eq.{source_id}",
+                "limit": page,
+                "offset": offset,
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        for row in rows:
+            if row.get("external_id"):
+                result[row["external_id"]] = row.get("version_iri")
+        if len(rows) < page:
+            break
+        offset += page
+    return result
+
+
 def main():
     log("=== Sync e-Sbirka TEXT (faze A): start ===")
     source_id = get_or_create_source()
@@ -337,6 +371,17 @@ def main():
             version_iri_by_citace[citace] = vi
         else:
             log(f"! {citace}: nenalezena aktualni verze, preskakuji")
+
+    existing_version_iris = get_existing_version_iris(source_id)
+    unchanged = 0
+    for citace in list(version_iri_by_citace.keys()):
+        if existing_version_iris.get(citace) == version_iri_by_citace[citace]:
+            del version_iri_by_citace[citace]
+            unchanged += 1
+    log(f"Beze zmeny od minuleho behu (preskakuji): {unchanged}, ke zpracovani: {len(version_iri_by_citace)}")
+    if not version_iri_by_citace:
+        log("Nic se od minuleho behu nezmenilo, konec.")
+        return
 
     version_iris = list(version_iri_by_citace.values())
     log(f"-> jeden prochod 003 pro {len(version_iris)} verzi soucasne")
@@ -378,9 +423,10 @@ def main():
                 "external_id": citace,
                 "doc_type": meta["doc_type"],
                 "title": title,
-                "issuer": "Sbírka zákonş",
+                "issuer": "Sbírka zákonů",
                 "url": doc_url,
                 "status": "platny",
+                "version_iri": version_iri,
             }],
             on_conflict="source_id,external_id",
         )
