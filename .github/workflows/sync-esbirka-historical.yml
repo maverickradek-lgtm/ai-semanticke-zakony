@@ -6,9 +6,9 @@ on:
       max_versions:
         description: "Max. pocet historickych zneni ke zpracovani v tomto behu"
         default: "500"
-      cutoff_years:
-        description: "Kolik let zpetne importovat historicka zneni"
-        default: "5"
+      cutoff_date:
+        description: "Od jakeho data importovat historicka zneni (YYYY-MM-DD)"
+        default: "2020-01-01"
   schedule:
     - cron: "30 5 * * *"
 
@@ -31,5 +31,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MAX_VERSIONS_PER_RUN: ${{ github.event.inputs.max_versions || '500' }}
-          CUTOFF_YEARS: ${{ github.event.inputs.cutoff_years || '5' }}
+          CUTOFF_DATE: ${{ github.event.inputs.cutoff_date || '2020-01-01' }}
         run: python scripts/sync_esbirka_historical.py
