@@ -41,6 +41,14 @@ DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
 PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
 REVERSE_ORDER = os.environ.get("REVERSE_ORDER", "false").lower() == "true"
 
+# Kdyz je nastaveno, tento beh embedduje VYHRADNE useky daneho doc_type
+# (napr. "rozhodnuti_uohs") pres samostatnou frontu/RPC, misto obecne
+# prioritizovane fronty pro predpisy a judikaty - viz migrace
+# dedicate_uohs_embedding_queue. Umoznuje vyhradit tretimu Gemini klici
+# vlastni nezavislou frontu, aby nemusela cekat za desetitisici jinych
+# cekajicich useku.
+DOC_TYPE_FILTER = os.environ.get("DOC_TYPE_FILTER", "").strip() or None
+
 # Pevna prodleva mezi jednotlivymi pozadavky na embedContent (ne jen reaktivni
 # cekani az PO chybe 429) - drzi tempo pod free-tier RPM stropem, ktery je u
 # embedding modelu casto nizky, a predchazi tomu, aby beh hned od prvniho
@@ -122,6 +130,20 @@ def fetch_pending_chunks(limit):
     # REVERSE_ORDER=true (druhy soubezny beh s druhym Gemini klicem) obraci
     # razeni (nejnizsi priorita/nejnovejsi useky prvni), aby se oba behy co
     # nejmin prekryvaly a nedelaly zbytecne duplicitni praci.
+    if DOC_TYPE_FILTER:
+        r = SESSION.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_by_doctype",
+            headers={
+                "apikey": SERVICE_KEY,
+                "Authorization": f"Bearer {SERVICE_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"p_doc_type": DOC_TYPE_FILTER, "p_limit": limit},
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json()
+
     r = SESSION.post(
         f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_prioritized",
         headers={
@@ -168,7 +190,7 @@ def update_chunk_embedding(chunk_id, embedding):
 
 def main():
     log("=== Embedding dobihani (faze B): start ===")
-    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}, REQUEST_DELAY_SECONDS={REQUEST_DELAY_SECONDS}")
+    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}, REQUEST_DELAY_SECONDS={REQUEST_DELAY_SECONDS}, DOC_TYPE_FILTER={DOC_TYPE_FILTER}")
     gemini_key = get_admin_gemini_key()
 
     total_done = 0
