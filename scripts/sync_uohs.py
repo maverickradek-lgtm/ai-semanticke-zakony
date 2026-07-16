@@ -183,6 +183,7 @@ def upsert_document(source_id, item):
         heading = f"cast {i + 1}/{len(chunks)}" if len(chunks) > 1 else None
         chunk_payload = {
             "document_id": doc_id,
+            "chunk_index": i,
             "heading": heading,
             "content": chunk_text[:8000],
         }
