@@ -159,17 +159,28 @@ def fetch_pending_chunks(limit):
 
 
 def fetch_document_titles(document_ids):
+    # Davkuje se po malych skupinach, protoze jedno GET s "in.(...)" seznamem
+    # VSECH id najednou muze pri velkem poctu ruznych dokumentu (napr. u
+    # rozhodnuti UOHS, kde je skoro 1 usek = 1 dokument) vytvorit tak dlouhou
+    # URL, ze ji Supabase odmitne (400 Bad Request).
     if not document_ids:
         return {}
-    ids_param = "in.(" + ",".join(document_ids) + ")"
-    r = SESSION.get(
-        f"{SUPABASE_URL}/rest/v1/documents",
-        headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
-        params={"select": "id,title", "id": ids_param},
-        timeout=60,
-    )
-    r.raise_for_status()
-    return {d["id"]: d["title"] for d in r.json()}
+    unique_ids = list(dict.fromkeys(document_ids))
+    titles = {}
+    batch_size = 150
+    for i in range(0, len(unique_ids), batch_size):
+        batch = unique_ids[i:i + batch_size]
+        ids_param = "in.(" + ",".join(batch) + ")"
+        r = SESSION.get(
+            f"{SUPABASE_URL}/rest/v1/documents",
+            headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
+            params={"select": "id,title", "id": ids_param},
+            timeout=60,
+        )
+        r.raise_for_status()
+        for d in r.json():
+            titles[d["id"]] = d["title"]
+    return titles
 
 
 def update_chunk_embedding(chunk_id, embedding):
