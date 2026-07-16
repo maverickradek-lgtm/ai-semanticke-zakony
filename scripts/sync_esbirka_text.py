@@ -351,6 +351,127 @@ def get_existing_version_iris(source_id):
     return result
 
 
+def fetch_current_document(source_id, external_id):
+    r = SESSION.get(
+        f"{SUPABASE_URL}/rest/v1/documents",
+        headers={
+            "apikey": SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+        },
+        params={
+            "select": "id,external_id,doc_type,title,issuer,url,version_iri",
+            "source_id": f"eq.{source_id}",
+            "external_id": f"eq.{external_id}",
+            "limit": 1,
+        },
+        timeout=60,
+    )
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if rows else None
+
+
+def fetch_chunks_for_document(document_id):
+    result = []
+    offset = 0
+    page = 1000
+    while True:
+        r = SESSION.get(
+            f"{SUPABASE_URL}/rest/v1/chunks",
+            headers={
+                "apikey": SERVICE_KEY,
+                "Authorization": f"Bearer {SERVICE_KEY}",
+            },
+            params={
+                "select": "chunk_index,heading,content,embedding",
+                "document_id": f"eq.{document_id}",
+                "order": "chunk_index.asc",
+                "limit": page,
+                "offset": offset,
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        result.extend(rows)
+        if len(rows) < page:
+            break
+        offset += page
+    return result
+
+
+def delete_chunks(document_id):
+    r = SESSION.delete(
+        f"{SUPABASE_URL}/rest/v1/chunks",
+        headers={
+            "apikey": SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+        },
+        params={"document_id": f"eq.{document_id}"},
+        timeout=60,
+    )
+    if not r.ok:
+        log("Supabase chyba (delete chunks):", r.status_code, r.text[:500])
+        r.raise_for_status()
+
+
+def parse_embedding(raw):
+    # PostgREST vraci pgvector sloupec jako retezec "[0.1,0.2,...]" misto
+    # JSON pole - pred znovu-ulozenim je potreba prevest zpet na seznam cisel.
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return raw
+    s = str(raw).strip()
+    if s.startswith("[") and s.endswith("]"):
+        s = s[1:-1]
+    if not s:
+        return None
+    return [float(x) for x in s.split(",")]
+
+
+def archive_old_version(source_id, old_doc):
+    # Ulozi predchozi (jiz neaktualni) zneni predpisu jako samostatny
+    # "historicky" zaznam se zachovanymi embeddingy - diky tomu se pri
+    # zmene predpisu nic nemusi znovu embeddingovat a chatbot muze v
+    # budoucnu rozlisovat stare a nove zneni.
+    old_chunks = fetch_chunks_for_document(old_doc["id"])
+    if not old_chunks:
+        return
+
+    version_suffix = (old_doc.get("version_iri") or "")[-40:]
+    archived_external_id = f'{old_doc["external_id"]}#hist-{version_suffix}'
+
+    hist_docs = supabase_upsert(
+        "documents",
+        [{
+            "source_id": source_id,
+            "external_id": archived_external_id,
+            "doc_type": old_doc["doc_type"],
+            "title": old_doc["title"],
+            "issuer": old_doc.get("issuer"),
+            "url": old_doc.get("url"),
+            "status": "historicky",
+            "version_iri": old_doc.get("version_iri"),
+            "is_current": False,
+            "valid_until": date.today().isoformat(),
+            "superseded_by": old_doc["id"],
+        }],
+        on_conflict="source_id,external_id",
+    )
+    hist_document_id = hist_docs[0]["id"]
+
+    hist_chunk_rows = [{
+        "document_id": hist_document_id,
+        "chunk_index": c["chunk_index"],
+        "heading": c.get("heading"),
+        "content": c.get("content"),
+        "embedding": parse_embedding(c.get("embedding")),
+    } for c in old_chunks]
+
+    if hist_chunk_rows:
+        supabase_upsert("chunks", hist_chunk_rows, on_conflict="document_id,chunk_index")
+
 def main():
     log("=== Sync e-Sbirka TEXT (faze A): start ===")
     source_id = get_or_create_source()
@@ -409,12 +530,20 @@ def main():
     )
 
     done = 0
+    archived = 0
     for citace, version_iri in version_iri_by_citace.items():
         act = acts[citace]
         meta = valid_citace[citace]
         title = meta["title"]
         doc_url = ("https://e-sbirka.cz" + version_iri.split("esel-esb:eli/cz")[-1]
                    if "eli/cz" in version_iri else None)
+
+        is_update = citace in existing_version_iris
+        if is_update:
+            old_doc = fetch_current_document(source_id, citace)
+            if old_doc:
+                archive_old_version(source_id, old_doc)
+                archived += 1
 
         docs = supabase_upsert(
             "documents",
@@ -427,10 +556,14 @@ def main():
                 "url": doc_url,
                 "status": "platny",
                 "version_iri": version_iri,
+                "is_current": True,
             }],
             on_conflict="source_id,external_id",
         )
         document_id = docs[0]["id"]
+
+        if is_update:
+            delete_chunks(document_id)
 
         section_nodes = section_nodes_by_version[version_iri]
         by_section = by_section_by_version[version_iri]
@@ -457,7 +590,7 @@ def main():
         if done % 200 == 0:
             log(f"  ...zpracovano {done}/{len(version_iri_by_citace)} predpisu")
 
-    log(f"=== Sync e-Sbirka TEXT: hotovo, zpracovano {done} predpisu ===")
+    log(f"=== Sync e-Sbirka TEXT: hotovo, zpracovano {done} predpisu (z toho archivovano puvodnich zneni: {archived}) ===")
 
 if __name__ == "__main__":
     main()
