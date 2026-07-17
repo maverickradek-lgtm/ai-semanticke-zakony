@@ -68,6 +68,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_UOHS }}
           DOC_TYPE_FILTER: "rozhodnuti_uohs"
-          DAILY_EMBED_BUDGET: "2500"
+          DAILY_EMBED_BUDGET: "450"
           EMBED_PAGE_SIZE: "150"
         run: python scripts/sync_esbirka_embed.py
