@@ -223,6 +223,7 @@
             <option value="judikat">Judikát</option>
             <option value="jiny_predpis">Jiný předpis</option>
             <option value="rozhodnuti_uohs">Rozhodnutí ÚOHS</option>
+            <option value="duvodova_zprava">Důvodová zpráva</option>
           </select>
           <button id="btn-db-search" class="secondary">Hledat</button>
         </div>
@@ -623,12 +624,12 @@ let dbTotalPages = 1;
 const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
-  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS' };
+  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
   return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis'];
+  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava'];
   const el = $('db-stats');
   el.textContent = 'Načítám…';
   const results = await Promise.all(types.map(t =>
