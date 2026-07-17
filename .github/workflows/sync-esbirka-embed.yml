@@ -69,4 +69,5 @@ jobs:
           GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_UOHS }}
           DOC_TYPE_FILTER: "rozhodnuti_uohs"
           DAILY_EMBED_BUDGET: "2500"
+          EMBED_PAGE_SIZE: "150"
         run: python scripts/sync_esbirka_embed.py
