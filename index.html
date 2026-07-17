@@ -676,8 +676,12 @@ async function loadDatabaseList(page) {
     if (dateStr) metaBits.push(dateStr);
     row.innerHTML = `<span><strong>${escapeHtml(d.title || '')}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
     const st = embedStatusMap.get(d.id);
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.alignItems = 'center';
+    actions.style.gap = '8px';
+    actions.style.flexShrink = '0';
     const badge = document.createElement('span');
-    badge.style.marginLeft = '8px';
     badge.style.fontSize = '0.85em';
     badge.style.padding = '2px 8px';
     badge.style.borderRadius = '10px';
@@ -695,12 +699,13 @@ async function loadDatabaseList(page) {
       badge.style.color = 'var(--warn)';
       badge.textContent = `částečně (${st.embedded}/${st.total})`;
     }
-    row.appendChild(badge);
+    actions.appendChild(badge);
     if (d.url) {
       const a = document.createElement('a');
       a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
-      row.appendChild(a);
+      actions.appendChild(a);
     }
+    row.appendChild(actions);
     list.appendChild(row);
   });
   const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
