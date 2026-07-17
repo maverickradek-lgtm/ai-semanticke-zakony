@@ -35,7 +35,7 @@ import requests
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID", "")
-GEMINI_API_KEY_OVERRIDE = os.environ.get("GEMINI_API_KEY_OVERRIDE", "")
+GEMINI_API_KEY_OVERRIDE = os.environ.get("GEMINI_API_KEY_OVERRIDE", "").strip()
 
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "900"))
 PAGE_SIZE = int(os.environ.get("EMBED_PAGE_SIZE", "1000"))
@@ -81,7 +81,7 @@ def get_admin_gemini_key():
         timeout=30,
     )
     r.raise_for_status()
-    key = r.json()
+    key = (r.json() or "").strip()
     if not key:
         raise RuntimeError("Admin nema ulozeny Gemini klic.")
     return key
