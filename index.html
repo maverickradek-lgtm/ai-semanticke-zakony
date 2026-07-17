@@ -227,11 +227,14 @@
           <button id="btn-db-search" class="secondary">Hledat</button>
         </div>
         <div id="db-list" class="muted">Načítám…</div>
-        <div class="row" style="margin-top:14px;">
+        <div class="row" style="margin-top:14px;flex-wrap:wrap;align-items:center;gap:6px;">
+          <button id="btn-db-first" class="secondary small">&laquo; Začátek</button>
           <button id="btn-db-prev" class="secondary small">Předchozí</button>
-          <span id="db-page-info" class="muted"></span>
+          <span id="db-page-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
           <button id="btn-db-next" class="secondary small">Další</button>
+          <button id="btn-db-last" class="secondary small">Konec &raquo;</button>
         </div>
+        <div id="db-page-info" class="muted" style="margin-top:6px;"></div>
       </div>
     </div><!-- /database-view -->
 
@@ -616,6 +619,7 @@ async function loadApprovedList() {
 
 
 let dbPage = 0;
+let dbTotalPages = 1;
 const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
@@ -624,7 +628,7 @@ function docTypeLabel(t) {
 }
 
 async function loadDatabaseStats() {
-  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','jiny_predpis'];
+  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis'];
   const el = $('db-stats');
   el.textContent = 'Načítám…';
   const results = await Promise.all(types.map(t =>
@@ -674,12 +678,29 @@ async function loadDatabaseList(page) {
     list.appendChild(row);
   });
   const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
+  dbTotalPages = totalPages;
   $('db-page-info').textContent = `Strana ${page + 1} / ${totalPages}`;
   $('btn-db-prev').disabled = page === 0;
   $('btn-db-next').disabled = page + 1 >= totalPages;
+  $('btn-db-first').disabled = page === 0;
+  $('btn-db-last').disabled = page + 1 >= totalPages;
+  const pageNumbers = $('db-page-numbers');
+  pageNumbers.innerHTML = '';
+  const startP = Math.max(0, page - 5);
+  const endP = Math.min(totalPages - 1, page + 5);
+  for (let p = startP; p <= endP; p++) {
+    const pBtn = document.createElement('button');
+    pBtn.className = 'secondary small' + (p === page ? ' active' : '');
+    pBtn.textContent = String(p + 1);
+    if (p === page) pBtn.disabled = true;
+    pBtn.onclick = () => loadDatabaseList(p);
+    pageNumbers.appendChild(pBtn);
+  }
 }
 
 $('btn-db-search').onclick = () => loadDatabaseList(0);
+$('btn-db-first').onclick = () => loadDatabaseList(0);
+$('btn-db-last').onclick = () => loadDatabaseList(dbTotalPages - 1);
 $('btn-db-prev').onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); };
 $('btn-db-next').onclick = () => loadDatabaseList(dbPage + 1);
 
