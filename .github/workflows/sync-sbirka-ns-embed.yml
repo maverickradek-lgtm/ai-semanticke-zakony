@@ -23,6 +23,22 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL_NS }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_NS }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
-          DAILY_EMBED_BUDGET: "800"
+          # Gemini limity jsou vazane na ucet, ne na jednotlivy klic - novy
+          # klic by nepridal zadnou kapacitu navic. GEMINI_API_KEY_2 nejde
+          # pouzit: ten ucet uz v hlavnim workflow (sync-esbirka-embed.yml)
+          # pouziva embed_secondary se stejnym startem (0 3 UTC) a rozpoctem
+          # 2500/den, coz prakticky vzdy vycerpa celou dennii kvotu uctu
+          # driv, nez tento job vubec stihne cokoliv poslat (potvrzeno
+          # testovacim behem - 429 hned na prvnim requestu).
+          #
+          # Misto toho pouzivame GEMINI_API_KEY_UOHS (ucet sdileny s
+          # embed_uohs, ktery ma mnohem nizsi rozpocet - 450/den - takze
+          # tam typicky zbyva vice nevycerpane denni kvoty). embed_uohs
+          # bezi take v 3:00 UTC, tento job az v 4:00 UTC, takze uz je
+          # jasne, kolik z denni kvoty uctu zbylo. Rozpocet drzime nizko
+          # (300/den) - soucasny dluh je jen 889 chunku (z 80 rozhodnuti),
+          # dalsi prirustek bude jen par desitek chunku/den, takze 300
+          # bohate stac a zaroven to necha prostor i pro embed_uohs.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_UOHS }}
+          DAILY_EMBED_BUDGET: "300"
         run: python scripts/sync_sbirka_ns_embed.py
