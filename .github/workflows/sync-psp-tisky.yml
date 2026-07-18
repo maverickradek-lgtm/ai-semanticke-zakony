@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       max_items:
-        description: "Kolik novych zakonu zpracovat v tomto behu"
+        description: "Kolik novych zakonu USPESNE zpracovat v tomto behu"
         required: false
         default: "15"
+      max_attempts:
+        description: "Kolik zakonu maximalne proverit celkem (i neuspesnych) - pojistka proti timeoutu"
+        required: false
+        default: "80"
 
   schedule:
     - cron: "0 2 * * *"
@@ -30,4 +34,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MAX_ITEMS: ${{ github.event.inputs.max_items || '15' }}
+          MAX_ATTEMPTS: ${{ github.event.inputs.max_attempts || '80' }}
         run: python scripts/sync_psp_tisky.py
