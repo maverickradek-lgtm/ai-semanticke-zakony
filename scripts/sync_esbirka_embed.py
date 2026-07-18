@@ -58,7 +58,7 @@ REQUEST_DELAY_SECONDS = float(os.environ.get("REQUEST_DELAY_SECONDS", "2"))
 MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "3"))
 
 EMBED_MODEL = "gemini-embedding-001"
-EMBED_DIM = 768
+EMBED_DIM = 256  # Matryoshka zkraceni z puvodnich 768 kvuli uspore mista v Supabase free tier (2026-07-18)
 
 SESSION = requests.Session()
 
