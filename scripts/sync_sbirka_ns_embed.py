@@ -49,7 +49,8 @@ def sb_headers():
 
 def get_pending_chunks(limit):
     """Nacte chunky, ktere jeste nemaji embedding, serazene podle
-    stari zaznamu."""
+    documents.embed_priority sestupne (dulezitejsi zdroje driv), pak
+    podle stari zaznamu."""
     r = SESSION.get(
         f"{SUPABASE_URL}/rest/v1/chunks",
         headers=sb_headers(),
@@ -65,9 +66,21 @@ def get_pending_chunks(limit):
     return r.json()
 
 
-def embed_text(text, max_retries=5):
+class QuotaExhausted(Exception):
+    """Signalizuje, ze denni/uctova kvota tohoto Gemini klice je
+    pravdepodobne vycerpana - nema smysl dal zkouset dalsi chunky,
+    kazdy dalsi pozadavek skoro jiste take dostane 429."""
+
+
+def embed_text(text, max_retries=2):
     """Zavola Gemini embedContent, vrati renormalizovany vektor o
-    EMBED_DIM prvcich, nebo None pri trvale chybe."""
+    EMBED_DIM prvcich, nebo None pri trvale (ne-kvotove) chybe.
+
+    Zamerne KRATKE retry (max 2x, kratky backoff) misto dlouheho
+    cekani - pokud je 429 zpusobene vycerpanou denni kvotou uctu (ne
+    prechodnym prekrocenim RPM), dalsi cekani nepomuze a jen to plyta
+    minuty GitHub Actions behu (viz stejna lekce u sync_psp_tisky.py -
+    fail fast, nezkouset dokola donekonecna)."""
     payload = {
         "model": "models/gemini-embedding-001",
         "content": {"parts": [{"text": text[:20000]}]},
@@ -78,10 +91,17 @@ def embed_text(text, max_retries=5):
         try:
             r = SESSION.post(GEMINI_URL, json=payload, timeout=60)
             if r.status_code == 429:
-                wait = 10 * (attempt + 1)
-                log(f"  429 rate limit, cekam {wait}s...")
-                time.sleep(wait)
-                continue
+                if attempt < max_retries - 1:
+                    log("  429 rate limit, kratka pauza 5s a jeste jeden pokus...")
+                    time.sleep(5)
+                    continue
+                # druhy 429 v rade - temer jiste vycerpana denni kvota uctu,
+                # ne jen prechodny RPM limit. Vzdavame se cele ulohy pro dnesek.
+                raise QuotaExhausted(
+                    "Gemini 429 i po kratkem retry - denni kvota uctu je "
+                    "pravdepodobne vycerpana (typicky jinym behem, ktery "
+                    "pouziva stejny ucet drive behem dne)."
+                )
             if not r.ok:
                 log(f"  Gemini chyba {r.status_code}: {r.text[:300]}")
                 if r.status_code >= 500:
@@ -119,21 +139,28 @@ def main():
     done = 0
     errors = 0
 
-    while done < DAILY_EMBED_BUDGET:
-        batch = get_pending_chunks(min(BATCH_SIZE, DAILY_EMBED_BUDGET - done))
-        if not batch:
-            log("Zadne dalsi chunky bez embeddingu - hotovo.")
-            break
+    try:
+        while done < DAILY_EMBED_BUDGET:
+            batch = get_pending_chunks(min(BATCH_SIZE, DAILY_EMBED_BUDGET - done))
+            if not batch:
+                log("Zadne dalsi chunky bez embeddingu - hotovo.")
+                break
 
-        for chunk in batch:
-            values = embed_text(chunk["content"])
-            if values is None:
-                errors += 1
-                continue
-            save_embedding(chunk["id"], values)
-            done += 1
+            for chunk in batch:
+                values = embed_text(chunk["content"])
+                if values is None:
+                    errors += 1
+                    continue
+                save_embedding(chunk["id"], values)
+                done += 1
 
-        log(f"  ...zpracovano {done}/{DAILY_EMBED_BUDGET} (chyb {errors})")
+            log(f"  ...zpracovano {done}/{DAILY_EMBED_BUDGET} (chyb {errors})")
+    except QuotaExhausted as e:
+        # Fail fast: nekoncime jako chyba behu (exit 1), protoze tohle je
+        # ocekavany denni stav (sdileny ucet uz vycerpal kvotu jinym behem),
+        # ne bug. Kdyz uz je progres > 0, cely den nebyl marny.
+        log(f"  {e}")
+        log(f"  Koncim drive, misto marneho zkouseni dalsich chunku.")
 
     log(f"=== Hotovo: embedovano {done}, chyb {errors} ===")
 
