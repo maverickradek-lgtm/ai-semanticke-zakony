@@ -21,7 +21,7 @@ import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"].strip()
 
 EMBED_DIM = int(os.environ.get("EMBED_DIM", "256"))
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "2500"))
