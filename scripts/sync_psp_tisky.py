@@ -42,6 +42,13 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "15"))
+# Zakony jsou razeny podle external_id.asc, coz NENI chronologicky (retezcove
+# razeni cisla/roku), a stare zakony (pred cca 1993) casto v psp.cz databazi
+# vubec nemaji odpovidajici tisk. Bez tohoto limitu by se skript mohl zaseknout
+# na dlouhe serii "nenalezeno" u starych zakonu a za 60 min timeoutu GitHub
+# Actions by nestihl zpracovat ani jeden MAX_ITEMS uspech. MAX_ATTEMPTS
+# omezuje celkovy pocet PROVERENYCH zakonu (uspesnych i neuspesnych) za beh.
+MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "80"))
 MAX_CHARS_PER_CHUNK = 1500
 # Ochrana proti extremne velkym zakonikum (napr. obcansky zakonik ma
 # duvodovou zpravu pres 1.5 mil. znaku, tj. ~1000 useku) - to by samo
@@ -250,16 +257,18 @@ def main():
     log(f"Celkem aktualne platnych zakonu v databazi: {len(laws)}")
 
     processed = 0
+    attempted = 0
     not_found = 0
     errors = 0
     for law in laws:
-        if processed >= MAX_ITEMS:
+        if processed >= MAX_ITEMS or attempted >= MAX_ATTEMPTS:
             break
         if law["id"] in existing:
             continue
         m = CITACE_RE.match(law["external_id"] or "")
         if not m:
             continue
+        attempted += 1
         cislo, rok = m.group(1), m.group(2)
         citace = f"{cislo}/{rok}"
         try:
@@ -292,7 +301,7 @@ def main():
             errors += 1
             log(f"   {citace}: chyba - {e}")
 
-    log(f"=== Hotovo: zpracovano {processed}, nenalezeno {not_found}, chyb {errors} ===")
+    log(f"=== Hotovo: proverenych {attempted}, zpracovano {processed}, nenalezeno {not_found}, chyb {errors} ===")
 
 
 if __name__ == "__main__":
