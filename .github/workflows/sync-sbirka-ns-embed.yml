@@ -1,0 +1,28 @@
+name: Sync Sbirka NS - denni dobihani embeddingu (faze B)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  embed_sbirka_ns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run embedding backfill (Sbirka NS)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_NS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_NS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+          DAILY_EMBED_BUDGET: "800"
+        run: python scripts/sync_sbirka_ns_embed.py
