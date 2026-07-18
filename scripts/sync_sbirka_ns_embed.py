@@ -28,8 +28,8 @@ DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "2500"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "50"))
 
 GEMINI_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"gemini-embedding-001:embedContent?key={GEMINI_API_KEY}"
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-embedding-001:embedContent"
 )
 
 SESSION = requests.Session()
@@ -89,7 +89,12 @@ def embed_text(text, max_retries=2):
     }
     for attempt in range(max_retries):
         try:
-            r = SESSION.post(GEMINI_URL, json=payload, timeout=60)
+            r = SESSION.post(
+                GEMINI_URL,
+                headers={"x-goog-api-key": GEMINI_API_KEY},
+                json=payload,
+                timeout=60,
+            )
             if r.status_code == 429:
                 if attempt < max_retries - 1:
                     log("  429 rate limit, kratka pauza 5s a jeste jeden pokus...")
@@ -138,6 +143,14 @@ def main():
 
     done = 0
     errors = 0
+    consecutive_errors = 0
+    # Obecna pojistka navic k QuotaExhausted (ktera resi jen opakovane 429):
+    # pokud selze 5 chunku v rade z JAKEHOKOLIV duvodu (spatny klic, spatny
+    # format pozadavku, vypadek API...), je to znamka strukturalni chyby,
+    # ne nahodneho spatneho obsahu jednoho chunku - nema smysl propalit
+    # celych 300/den na opakovani te same chyby (presne tohle se stalo
+    # 2026-07-19: spatna metoda autentizace vracela 401 na kazdem chunku).
+    MAX_CONSECUTIVE_ERRORS = 5
 
     try:
         while done < DAILY_EMBED_BUDGET:
@@ -150,7 +163,17 @@ def main():
                 values = embed_text(chunk["content"])
                 if values is None:
                     errors += 1
+                    consecutive_errors += 1
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        log(f"  {consecutive_errors}x chyba v rade - "
+                            f"pravdepodobne strukturalni problem (spatny "
+                            f"klic, spatny format pozadavku...), ne nahoda. "
+                            f"Koncim drive misto marneho opakovani.")
+                        raise QuotaExhausted(
+                            "Prilis mnoho chyb v rade, koncim drive."
+                        )
                     continue
+                consecutive_errors = 0
                 save_embedding(chunk["id"], values)
                 done += 1
 
