@@ -143,7 +143,7 @@ def get_current_laws():
             f"{SUPABASE_URL}/rest/v1/documents",
             headers={**sb_headers(), "Range-Unit": "items", "Range": f"{offset}-{offset + page_size - 1}"},
             params={
-                "select": "id,external_id,title",
+                "select": "id,external_id,title,embed_priority",
                 "doc_type": "eq.zakon",
                 "is_current": "eq.true",
                 "order": "external_id.asc",
@@ -237,6 +237,11 @@ def split_into_chunks(text, max_chars=None):
 
 
 def save_duvodova_zprava(source_id, law, citace, tiskt_url, text):
+    # Dulezite predpisy (obcansky zakonik, trestni zakonik, danovy rad...)
+    # maji rucne nastavenou vyssi documents.embed_priority, aby se embedovaly
+    # driv nez obrovska obecna fronta. Duvodova zprava k takovemu predpisu at
+    # zdedi stejnou prioritu - jinak by cekala na konci fronty spolu se vsemi
+    # ostatnimi mene dulezitymi useky.
     doc_payload = {
         "source_id": source_id,
         "doc_type": "duvodova_zprava",
@@ -245,6 +250,7 @@ def save_duvodova_zprava(source_id, law, citace, tiskt_url, text):
         "url": tiskt_url,
         "status": "platny",
         "explains_document_id": law["id"],
+        "embed_priority": law.get("embed_priority") or 0,
     }
     r = SESSION.post(
         f"{SUPABASE_URL}/rest/v1/documents",
