@@ -33,6 +33,7 @@ MAX_ITEMS omezuje pocet NOVE zpracovanych zakonu za jeden beh (kazdy stoji
 
 import os
 import re
+import time
 
 import requests
 from pypdf import PdfReader
@@ -68,6 +69,20 @@ DZ_HEADING_RE = re.compile(r"D[uů]vodov[áa]\s+zpr[áa]va", re.IGNORECASE)
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": "ai-semanticke-zakony/1.0 (nekomercni projekt)"})
+
+# psp.cz obcas na kratkou dobu neodpovida / timeoutuje (zejmena z IP adres
+# GitHub Actions runneru) - misto rovnou vzdat celý zakon to zkusime jeste
+# 2x s malou prodlevou, nez to oznacime za "nenalezeno".
+def psp_get(url, params, timeout=45, retries=2):
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return SESSION.get(url, params=params, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            if attempt < retries:
+                time.sleep(5 * (attempt + 1))
+    raise last_exc
 
 
 def log(*a):
@@ -108,20 +123,35 @@ def get_or_create_source():
 
 
 def get_current_laws():
-    """Vsechny aktualne platne zakony, ktere jeste nemaji pripojenou duvodovou zpravu."""
-    r = SESSION.get(
-        f"{SUPABASE_URL}/rest/v1/documents",
-        headers=sb_headers(),
-        params={
-            "select": "id,external_id,title",
-            "doc_type": "eq.zakon",
-            "is_current": "eq.true",
-            "order": "external_id.asc",
-        },
-        timeout=60,
-    )
-    r.raise_for_status()
-    return r.json()
+    """Vsechny aktualne platne zakony, ktere jeste nemaji pripojenou duvodovou zpravu.
+
+    PostgREST vraci defaultne max 1000 radku na dotaz - bez strankovani bychom
+    tise videli jen prvni tisicovku (razeno dle external_id.asc), ne vsech
+    ~3200 aktualnich zakonu.
+    """
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        r = SESSION.get(
+            f"{SUPABASE_URL}/rest/v1/documents",
+            headers={**sb_headers(), "Range-Unit": "items", "Range": f"{offset}-{offset + page_size - 1}"},
+            params={
+                "select": "id,external_id,title",
+                "doc_type": "eq.zakon",
+                "is_current": "eq.true",
+                "order": "external_id.asc",
+            },
+            timeout=60,
+        )
+        if r.status_code not in (200, 206):
+            r.raise_for_status()
+        rows = r.json()
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 
 def get_existing_explains_ids():
@@ -137,7 +167,7 @@ def get_existing_explains_ids():
 
 
 def find_historie_link(cislo, rok):
-    r = SESSION.get(SBIRKA_URL, params={"cz": cislo, "r": rok}, timeout=30)
+    r = psp_get(SBIRKA_URL, params={"cz": cislo, "r": rok})
     if not r.ok:
         return None
     html = r.content.decode("cp1250", errors="replace")
@@ -148,7 +178,7 @@ def find_historie_link(cislo, rok):
 
 
 def find_pdf_idd(o, t):
-    r = SESSION.get(TISKT_URL, params={"o": o, "ct": t, "ct1": "0"}, timeout=30)
+    r = psp_get(TISKT_URL, params={"o": o, "ct": t, "ct1": "0"})
     if not r.ok:
         return None
     html = r.content.decode("cp1250", errors="replace")
@@ -282,7 +312,7 @@ def main():
                 not_found += 1
                 continue
             tiskt_url = f"{TISKT_URL}?o={o}&ct={t}&ct1=0"
-            pdf_r = SESSION.get(PDF_URL, params={"idd": idd, "pdf": "1"}, timeout=120)
+            pdf_r = psp_get(PDF_URL, params={"idd": idd, "pdf": "1"}, timeout=120)
             if not pdf_r.ok:
                 not_found += 1
                 continue
@@ -300,6 +330,7 @@ def main():
         except Exception as e:
             errors += 1
             log(f"   {citace}: chyba - {e}")
+        time.sleep(1)  # slusne tempo dotazu vuci psp.cz
 
     log(f"=== Hotovo: proverenych {attempted}, zpracovano {processed}, nenalezeno {not_found}, chyb {errors} ===")
 
