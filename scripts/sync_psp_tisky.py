@@ -42,14 +42,14 @@ from io import BytesIO
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "15"))
+MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "30"))
 # Zakony jsou razeny podle external_id.asc, coz NENI chronologicky (retezcove
 # razeni cisla/roku), a stare zakony (pred cca 1993) casto v psp.cz databazi
 # vubec nemaji odpovidajici tisk. Bez tohoto limitu by se skript mohl zaseknout
 # na dlouhe serii "nenalezeno" u starych zakonu a za 60 min timeoutu GitHub
 # Actions by nestihl zpracovat ani jeden MAX_ITEMS uspech. MAX_ATTEMPTS
 # omezuje celkovy pocet PROVERENYCH zakonu (uspesnych i neuspesnych) za beh.
-MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "80"))
+MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "250"))
 MAX_CHARS_PER_CHUNK = 1500
 # Ochrana proti extremne velkym zakonikum (napr. obcansky zakonik ma
 # duvodovou zpravu pres 1.5 mil. znaku, tj. ~1000 useku) - to by samo
@@ -73,7 +73,13 @@ SESSION.headers.update({"User-Agent": "ai-semanticke-zakony/1.0 (nekomercni proj
 # psp.cz obcas na kratkou dobu neodpovida / timeoutuje (zejmena z IP adres
 # GitHub Actions runneru) - misto rovnou vzdat celý zakon to zkusime jeste
 # 2x s malou prodlevou, nez to oznacime za "nenalezeno".
-def psp_get(url, params, timeout=45, retries=2):
+def psp_get(url, params, timeout=20, retries=1):
+    # Prvni reala vzorka (2026-07-18) ukazala, ze vetsina "chyb" jsou tiche
+    # connect-timeouty, ne docasne vykyvy - dalsi pokusy je nezachranuji,
+    # jen prodluzuji beh (2 retries * 45s timeout stalo az 150s na jeden
+    # neuspesny zakon). Radsi rychle selhat (kratsi timeout, jen 1 kratky
+    # retry) a zkusit vic zakonu za stejny cas, nez utratit vsechen cas
+    # opakovanymi pokusy o spojeni, ktere stejne casto neprojde.
     last_exc = None
     for attempt in range(retries + 1):
         try:
@@ -81,7 +87,7 @@ def psp_get(url, params, timeout=45, retries=2):
         except requests.exceptions.RequestException as e:
             last_exc = e
             if attempt < retries:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(2)
     raise last_exc
 
 
@@ -312,7 +318,7 @@ def main():
                 not_found += 1
                 continue
             tiskt_url = f"{TISKT_URL}?o={o}&ct={t}&ct1=0"
-            pdf_r = psp_get(PDF_URL, params={"idd": idd, "pdf": "1"}, timeout=120)
+            pdf_r = psp_get(PDF_URL, params={"idd": idd, "pdf": "1"}, timeout=90, retries=0)
             if not pdf_r.ok:
                 not_found += 1
                 continue
