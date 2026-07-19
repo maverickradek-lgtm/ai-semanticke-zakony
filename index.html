@@ -109,6 +109,8 @@ user-select: none;
 display: none;
 }
 .input-clear-btn:hover { opacity: 0.75; }
+
+.doc-disclaimer{background:var(--panel-2);border:1px solid var(--warn);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;font-size:14px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -302,6 +304,21 @@ display: none;
 </div>
 
 </div><!-- /settings-view -->
+<section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
+<h2 style="margin-bottom:6px;">Posouzení dokumentu <span class="muted" style="font-size:13px;font-weight:400;">(beta)</span></h2>
+<div class="doc-disclaimer">Toto je obecné vysvětlení dokumentu s odkazy na související zákony a judikaturu z naší databáze – <strong>ne právní posouzení ani závazné stanovisko</strong>. Všechny extrahované údaje (data, lhůty, čísla jednací) si vždy ověřte přímo v originálním dokumentu. Pro cokoliv s právními důsledky se poraďte s odborníkem.</div>
+<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain" style="margin-bottom:10px;display:block;">
+<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT. Max. velikost 6&nbsp;MB. (Wordové dokumenty zatím nejsou podporované.)</div>
+<button id="btn-doc-review">Nahrát a vysvětlit</button>
+<span id="doc-spinner" class="hidden muted" style="margin-left:10px;">Zpracovávám…</span>
+<div id="doc-error" class="hidden" style="color:var(--danger);margin-top:12px;"></div>
+<div id="doc-answer-card" class="hidden" style="margin-top:18px;">
+<div id="doc-answer-text"></div>
+<h3 style="margin-top:18px;font-size:15px;">Související zdroje</h3>
+<div id="doc-answer-sources"></div>
+</div>
+</section>
+
 
 </div>
 
@@ -850,6 +867,50 @@ if (e.key === 'Enter') { e.preventDefault(); $('btn-trial-ask').click(); }
 });
 
 loadProfile();
+
+const btnDocReview = document.getElementById('btn-doc-review');
+if (btnDocReview) {
+  btnDocReview.addEventListener('click', async () => {
+    hide('doc-error');
+    hide('doc-answer-card');
+    const fileInput = document.getElementById('doc-file-input');
+    const errBox = document.getElementById('doc-error');
+    const file = fileInput.files[0];
+    if (!file) { errBox.textContent = 'Nejprve vyberte soubor.'; show('doc-error'); return; }
+    const isAllowed = ['application/pdf','text/plain'].includes(file.type) || /\.(pdf|txt)$/i.test(file.name);
+    if (!isAllowed) { errBox.textContent = 'Podporované formáty jsou zatím jen PDF a TXT.'; show('doc-error'); return; }
+    if (file.size > 6 * 1024 * 1024) { errBox.textContent = 'Soubor je větší než 6 MB.'; show('doc-error'); return; }
+    show('doc-spinner');
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Nepodařilo se načíst soubor.'));
+        reader.readAsDataURL(file);
+      });
+      const base64 = dataUrl.split(',')[1];
+      const mimeType = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'text/plain');
+      const result = await callFn('review-document', { file_base64: base64, mime_type: mimeType, filename: file.name });
+      document.getElementById('doc-answer-text').innerHTML = renderAnswer(result.answer || '(prázdná odpověď)');
+      const sources = result.sources || [];
+      document.getElementById('doc-answer-sources').innerHTML = sources.length
+        ? sources.map(s => {
+            const label = s.heading ? (escapeHtml(s.title) + ' – ' + escapeHtml(s.heading)) : escapeHtml(s.title);
+            const urlOk = s.url && /^https?:\/\//.test(s.url);
+            return urlOk
+              ? '<div class="source-item">' + label + ' — <a href="' + s.url + '" target="_blank" rel="noopener">otevřít zdroj</a></div>'
+              : '<div class="source-item">' + label + '</div>';
+          }).join('')
+        : '<div class="source-item">Žádné související zdroje nebyly v databázi nalezeny.</div>';
+      show('doc-answer-card');
+    } catch (e) {
+      errBox.textContent = 'Chyba: ' + (e && e.message ? e.message : String(e));
+      show('doc-error');
+    } finally {
+      hide('doc-spinner');
+    }
+  });
+}
 </script>
 
 </body></html>
