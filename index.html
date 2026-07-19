@@ -4,284 +4,284 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI sémantické zákony</title>
 <style>
-  :root {
-    --bg: #0f1720;
-    --panel: #161f2c;
-    --panel-2: #1d2836;
-    --border: #2a3644;
-    --text: #e8edf3;
-    --muted: #93a2b3;
-    --accent: #4f8cff;
-    --accent-2: #2f6fe0;
-    --danger: #e05a5a;
-    --ok: #3fbf7f;
-    --warn: #e0b23f;
-    --radius: 12px;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-  }
-  header {
-    padding: 18px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  main { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 24px;
-    margin-bottom: 20px;
-  }
-  h2 { font-size: 16px; margin: 0 0 14px; }
-  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  input[type=text], input[type=email], input[type=password] {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--panel-2);
-    color: var(--text);
-    font-size: 14px;
-    margin-bottom: 14px;
-  }
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-size: 14px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  button:hover { background: var(--accent-2); }
-  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  button.small { padding: 6px 12px; font-size: 13px; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .pill {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .pill.pending { background: rgba(224,178,63,.15); color: var(--warn); }
-  .pill.approved { background: rgba(63,191,127,.15); color: var(--ok); }
-  .pill.rejected, .pill.revoked { background: rgba(224,90,90,.15); color: var(--danger); }
-  .error { color: var(--danger); font-size: 13px; margin: -6px 0 12px; }
-  .ok-msg { color: var(--ok); font-size: 13px; margin: -6px 0 12px; }
-  .hidden { display: none !important; }
-  .answer { white-space: pre-wrap; line-height: 1.55; font-size: 14.5px; }
-  .sources { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
-  .source-item { font-size: 13px; margin-bottom: 8px; color: var(--muted); }
-  .source-item a { color: var(--accent); }
-  .toggle-row { display: flex; align-items: center; gap: 8px; margin: 10px 0 16px; }
-  .admin-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
-  .spinner { color: var(--muted); font-size: 13px; }
-  a.link-btn { color: var(--accent); font-size: 13px; cursor: pointer; text-decoration: underline; }
-  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+:root {
+--bg: #0f1720;
+--panel: #161f2c;
+--panel-2: #1d2836;
+--border: #2a3644;
+--text: #e8edf3;
+--muted: #93a2b3;
+--accent: #4f8cff;
+--accent-2: #2f6fe0;
+--danger: #e05a5a;
+--ok: #3fbf7f;
+--warn: #e0b23f;
+--radius: 12px;
+}
+* { box-sizing: border-box; }
+body {
+margin: 0;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+background: var(--bg);
+color: var(--text);
+min-height: 100vh;
+}
+header {
+padding: 18px 24px;
+border-bottom: 1px solid var(--border);
+display: flex;
+align-items: center;
+justify-content: space-between;
+}
+header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+header .sub { color: var(--muted); font-size: 13px; }
+main { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
+.card {
+background: var(--panel);
+border: 1px solid var(--border);
+border-radius: var(--radius);
+padding: 24px;
+margin-bottom: 20px;
+}
+h2 { font-size: 16px; margin: 0 0 14px; }
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+input[type=text], input[type=email], input[type=password] {
+width: 100%;
+padding: 10px 12px;
+border-radius: 8px;
+border: 1px solid var(--border);
+background: var(--panel-2);
+color: var(--text);
+font-size: 14px;
+margin-bottom: 14px;
+}
+button {
+background: var(--accent);
+color: white;
+border: none;
+padding: 10px 18px;
+border-radius: 8px;
+font-size: 14px;
+cursor: pointer;
+font-weight: 600;
+}
+button:hover { background: var(--accent-2); }
+button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+button.small { padding: 6px 12px; font-size: 13px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13px; }
+.pill {
+display: inline-block;
+padding: 3px 10px;
+border-radius: 999px;
+font-size: 12px;
+font-weight: 600;
+}
+.pill.pending { background: rgba(224,178,63,.15); color: var(--warn); }
+.pill.approved { background: rgba(63,191,127,.15); color: var(--ok); }
+.pill.rejected, .pill.revoked { background: rgba(224,90,90,.15); color: var(--danger); }
+.error { color: var(--danger); font-size: 13px; margin: -6px 0 12px; }
+.ok-msg { color: var(--ok); font-size: 13px; margin: -6px 0 12px; }
+.hidden { display: none !important; }
+.answer { white-space: pre-wrap; line-height: 1.55; font-size: 14.5px; }
+.sources { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+.source-item { font-size: 13px; margin-bottom: 8px; color: var(--muted); }
+.source-item a { color: var(--accent); }
+.toggle-row { display: flex; align-items: center; gap: 8px; margin: 10px 0 16px; }
+.admin-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.spinner { color: var(--muted); font-size: 13px; }
+a.link-btn { color: var(--accent); font-size: 13px; cursor: pointer; text-decoration: underline; }
+footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
 </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>AI sémantické zákony</h1>
-    <div class="sub">Vyhledávání v českých zákonech a judikatuře</div>
-  </div>
-  <div id="header-actions"></div>
+<div>
+<h1>AI sémantické zákony</h1>
+<div class="sub">Vyhledávání v českých zákonech a judikatuře</div>
+</div>
+<div id="header-actions"></div>
 </header>
 
 <main>
 
-  <!-- AUTH -->
-  <div id="auth-section" class="card hidden">
-    <h2 id="auth-title">Přihlášení</h2>
-    <div id="auth-error" class="error hidden"></div>
-    <div id="auth-ok" class="ok-msg hidden"></div>
-    <label>E-mail</label>
-    <input type="email" id="auth-email" placeholder="vas@email.cz">
-    <label>Heslo</label>
-    <input type="password" id="auth-password" placeholder="••••••••">
-    <div class="row">
-      <button id="btn-signin">Přihlásit se</button>
-      <button class="secondary" id="btn-signup">Vytvořit účet</button>
-    </div>
-  </div>
+<!-- AUTH -->
+<div id="auth-section" class="card hidden">
+<h2 id="auth-title">Přihlášení</h2>
+<div id="auth-error" class="error hidden"></div>
+<div id="auth-ok" class="ok-msg hidden"></div>
+<label>E-mail</label>
+<input type="email" id="auth-email" placeholder="vas@email.cz">
+<label>Heslo</label>
+<input type="password" id="auth-password" placeholder="••••••••">
+<div class="row">
+<button id="btn-signin">Přihlásit se</button>
+<button class="secondary" id="btn-signup">Vytvořit účet</button>
+</div>
+</div>
 
-  <!-- PENDING APPROVAL / ZKUŠEBNÍ PROVOZ -->
-  <div id="pending-section" class="hidden">
-    <div class="card">
-      <h2>Čeká na schválení <span class="pill pending">pending</span></h2>
-      <p class="muted">Váš účet byl vytvořen a čeká na schválení správcem aplikace. Mezitím si appku můžete vyzkoušet ve zkušebním provozu (<span id="trial-remaining-text"></span>).</p>
-      <button class="secondary" id="btn-logout-pending">Odhlásit se</button>
-    </div>
+<!-- PENDING APPROVAL / ZKUŠEBNÍ PROVOZ -->
+<div id="pending-section" class="hidden">
+<div class="card">
+<h2>Čeká na schválení <span class="pill pending">pending</span></h2>
+<p class="muted">Váš účet byl vytvořen a čeká na schválení správcem aplikace. Mezitím si appku můžete vyzkoušet ve zkušebním provozu (<span id="trial-remaining-text"></span>).</p>
+<button class="secondary" id="btn-logout-pending">Odhlásit se</button>
+</div>
 
-    <div id="trial-key-card" class="card hidden">
-      <h2>Google Gemini API klíč</h2>
-      <p class="muted">Pro zkušební provoz potřebujete vlastní Gemini API klíč, zdarma na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně.</p>
-      <input type="text" id="trial-key-input" placeholder="Vložte Gemini API klíč">
-      <button id="btn-trial-save-key">Uložit klíč</button>
-      <div id="trial-key-msg" class="ok-msg hidden"></div>
-    </div>
+<div id="trial-key-card" class="card hidden">
+<h2>Google Gemini API klíč</h2>
+<p class="muted">Pro zkušební provoz potřebujete vlastní Gemini API klíč, zdarma na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně.</p>
+<input type="text" id="trial-key-input" placeholder="Vložte Gemini API klíč">
+<button id="btn-trial-save-key">Uložit klíč</button>
+<div id="trial-key-msg" class="ok-msg hidden"></div>
+</div>
 
-    <div id="trial-query-card" class="card hidden">
-      <h2>Zkušební dotaz</h2>
-      <input type="text" id="trial-query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
-      <button id="btn-trial-ask">Zeptat se</button>
-      <div id="trial-ask-error" class="error hidden"></div>
-      <div id="trial-ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
-    </div>
+<div id="trial-query-card" class="card hidden">
+<h2>Zkušební dotaz</h2>
+<input type="text" id="trial-query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
+<button id="btn-trial-ask">Zeptat se</button>
+<div id="trial-ask-error" class="error hidden"></div>
+<div id="trial-ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
+</div>
 
-    <div id="trial-answer-card" class="card hidden">
-      <h2>Odpověď</h2>
-      <div class="answer" id="trial-answer-text"></div>
-      <div class="sources" id="trial-answer-sources"></div>
-    </div>
+<div id="trial-answer-card" class="card hidden">
+<h2>Odpověď</h2>
+<div class="answer" id="trial-answer-text"></div>
+<div class="sources" id="trial-answer-sources"></div>
+</div>
 
-    <div id="trial-exhausted-card" class="card hidden">
-      <h2>Zkušební provoz vyčerpán</h2>
-      <p class="muted">Vyčerpali jste všech 20 zkušebních dotazů. Počkejte prosím na schválení účtu správcem aplikace.</p>
-    </div>
-  </div>
+<div id="trial-exhausted-card" class="card hidden">
+<h2>Zkušební provoz vyčerpán</h2>
+<p class="muted">Vyčerpali jste všech 20 zkušebních dotazů. Počkejte prosím na schválení účtu správcem aplikace.</p>
+</div>
+</div>
 
-  <div id="rejected-section" class="card hidden">
-    <h2>Přístup nepovolen <span class="pill rejected">zamítnuto</span></h2>
-    <p class="muted">Přístup k této aplikaci vám nebyl (nebo již není) povolen. Pro více informací kontaktujte správce.</p>
-    <button class="secondary" id="btn-logout-rejected">Odhlásit se</button>
-  </div>
+<div id="rejected-section" class="card hidden">
+<h2>Přístup nepovolen <span class="pill rejected">zamítnuto</span></h2>
+<p class="muted">Přístup k této aplikaci vám nebyl (nebo již není) povolen. Pro více informací kontaktujte správce.</p>
+<button class="secondary" id="btn-logout-rejected">Odhlásit se</button>
+</div>
 
-  <!-- APP -->
-  <div id="app-section" class="hidden">
+<!-- APP -->
+<div id="app-section" class="hidden">
 
-    <div id="dashboard-view">
+<div id="dashboard-view">
 
-    <div id="no-key-banner" class="card hidden">
-      <h2>Chybí Gemini API klíč</h2>
-      <p class="muted">Bez vlastního klíče appka nemůže odpovídat. <a class="link-btn" id="goto-settings-from-banner">Přejít do nastavení a klíč vložit</a></p>
-    </div>
+<div id="no-key-banner" class="card hidden">
+<h2>Chybí Gemini API klíč</h2>
+<p class="muted">Bez vlastního klíče appka nemůže odpovídat. <a class="link-btn" id="goto-settings-from-banner">Přejít do nastavení a klíč vložit</a></p>
+</div>
 
-    <div class="card">
-      <h2>Dotaz</h2>
-      <input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
-      <div class="toggle-row">
-        <input type="checkbox" id="web-toggle">
-        <label for="web-toggle" style="margin:0;">Hledat i na webu (mimo naši databázi)</label>
-      </div><div class="as-of-row" style="margin-top: 10px;"><label for="as-of-date" style="margin-right: 8px;">Platnost k datu (nepovinné, jinak aktuální znění):</label><input type="date" id="as-of-date"></div>
-      <button id="btn-ask">Zeptat se</button>
-      <div id="ask-error" class="error hidden"></div>
-      <div id="ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
-    </div>
+<div class="card">
+<h2>Dotaz</h2>
+<input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
+<div class="toggle-row">
+<input type="checkbox" id="web-toggle">
+<label for="web-toggle" style="margin:0;">Hledat i na webu (mimo naši databázi)</label>
+</div><div class="as-of-row" style="margin-top: 10px;"><label for="as-of-date" style="margin-right: 8px;">Platnost k datu (nepovinné, jinak aktuální znění):</label><input type="date" id="as-of-date"></div>
+<button id="btn-ask">Zeptat se</button>
+<div id="ask-error" class="error hidden"></div>
+<div id="ask-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div>
+</div>
 
-    <div id="answer-card" class="card hidden">
-      <h2>Odpověď</h2>
-      <div class="answer" id="answer-text"></div>
-      <div class="sources" id="answer-sources"></div>
-    </div>
+<div id="answer-card" class="card hidden">
+<h2>Odpověď</h2>
+<div class="answer" id="answer-text"></div>
+<div class="sources" id="answer-sources"></div>
+</div>
 
-    </div><!-- /dashboard-view -->
+</div><!-- /dashboard-view -->
 
-    <div id="admin-view" class="hidden">
-      <div class="card">
-        <h2>Administrace – čekající na schválení</h2>
-        <div id="admin-list" class="muted">Načítám…</div>
-      </div>
-      <div class="card">
-        <h2>Registrovaní uživatelé</h2>
-        <div id="approved-list" class="muted">Načítám…</div>
-      </div>
-    </div><!-- /admin-view -->
+<div id="admin-view" class="hidden">
+<div class="card">
+<h2>Administrace – čekající na schválení</h2>
+<div id="admin-list" class="muted">Načítám…</div>
+</div>
+<div class="card">
+<h2>Registrovaní uživatelé</h2>
+<div id="approved-list" class="muted">Načítám…</div>
+</div>
+</div><!-- /admin-view -->
 
-    <div id="database-view" class="hidden">
-      <div class="card">
-        <h2>Přehled databáze</h2>
-        <div id="db-stats" class="muted">Načítám…</div>
-      </div>
-      <div class="card">
-        <div class="row" style="margin-bottom:14px;">
-          <input type="text" id="db-search" placeholder="Hledat v názvech…" style="flex:1; margin-bottom:0;">
-          <select id="db-type-filter" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel-2); color:var(--text);">
-            <option value="">Vše</option>
-            <option value="zakon">Zákon</option>
-            <option value="vyhlaska">Vyhláška</option>
-            <option value="narizeni">Nařízení</option>
-            <option value="opatreni">Opatření</option>
-            <option value="dekret">Dekret</option>
-            <option value="judikat">Judikát</option>
-            <option value="jiny_predpis">Jiný předpis</option>
-            <option value="rozhodnuti_uohs">Rozhodnutí ÚOHS</option>
-            <option value="duvodova_zprava">Důvodová zpráva</option>
-          </select>
-          <button id="btn-db-search" class="secondary">Hledat</button>
-        </div>
-        <div id="db-list" class="muted">Načítám…</div>
-        <div class="row" style="margin-top:14px;flex-wrap:wrap;align-items:center;gap:6px;">
-          <button id="btn-db-first" class="secondary small">&laquo; Začátek</button>
-          <button id="btn-db-prev" class="secondary small">Předchozí</button>
-          <span id="db-page-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
-          <button id="btn-db-next" class="secondary small">Další</button>
-          <button id="btn-db-last" class="secondary small">Konec &raquo;</button>
-        </div>
-        <div id="db-page-info" class="muted" style="margin-top:6px;"></div>
-      </div>
-    </div><!-- /database-view -->
+<div id="database-view" class="hidden">
+<div class="card">
+<h2>Přehled databáze</h2>
+<div id="db-stats" class="muted">Načítám…</div>
+</div>
+<div class="card">
+<div class="row" style="margin-bottom:14px;">
+<input type="text" id="db-search" placeholder="Hledat v názvech…" style="flex:1; margin-bottom:0;">
+<select id="db-type-filter" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel-2); color:var(--text);">
+<option value="">Vše</option>
+<option value="zakon">Zákon</option>
+<option value="vyhlaska">Vyhláška</option>
+<option value="narizeni">Nařízení</option>
+<option value="opatreni">Opatření</option>
+<option value="dekret">Dekret</option>
+<option value="judikat">Judikát</option>
+<option value="jiny_predpis">Jiný předpis</option>
+<option value="rozhodnuti_uohs">Rozhodnutí ÚOHS</option>
+<option value="duvodova_zprava">Důvodová zpráva</option>
+</select>
+<button id="btn-db-search" class="secondary">Hledat</button>
+</div>
+<div id="db-list" class="muted">Načítám…</div>
+<div class="row" style="margin-top:14px;flex-wrap:wrap;align-items:center;gap:6px;">
+<button id="btn-db-first" class="secondary small">&laquo; Začátek</button>
+<button id="btn-db-prev" class="secondary small">Předchozí</button>
+<span id="db-page-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
+<button id="btn-db-next" class="secondary small">Další</button>
+<button id="btn-db-last" class="secondary small">Konec &raquo;</button>
+</div>
+<div id="db-page-info" class="muted" style="margin-top:6px;"></div>
+</div>
+</div><!-- /database-view -->
 
-    <div id="settings-view" class="hidden">
+<div id="settings-view" class="hidden">
 
-      <div class="card">
-        <h2>Údaje o účtu</h2>
-        <label>Jméno</label>
-        <input type="text" id="settings-first-name" placeholder="Jméno">
-        <label>Příjmení</label>
-        <input type="text" id="settings-last-name" placeholder="Příjmení">
-        <label>Telefon</label>
-        <input type="text" id="settings-phone" placeholder="+420 ...">
-        <button id="btn-save-profile">Uložit údaje</button>
-        <div id="profile-msg" class="ok-msg hidden"></div>
-      </div>
+<div class="card">
+<h2>Údaje o účtu</h2>
+<label>Jméno</label>
+<input type="text" id="settings-first-name" placeholder="Jméno">
+<label>Příjmení</label>
+<input type="text" id="settings-last-name" placeholder="Příjmení">
+<label>Telefon</label>
+<input type="text" id="settings-phone" placeholder="+420 ...">
+<button id="btn-save-profile">Uložit údaje</button>
+<div id="profile-msg" class="ok-msg hidden"></div>
+</div>
 
-      <div class="card">
-        <h2>E-mail a přihlášení</h2>
-        <p class="muted">Aktuální e-mail: <strong id="settings-current-email"></strong></p>
-        <label>Nový e-mail (nepovinné, pro změnu)</label>
-        <input type="email" id="settings-new-email" placeholder="novy@email.cz">
-        <button id="btn-change-email" class="secondary">Změnit e-mail</button>
-        <div id="email-msg" class="ok-msg hidden"></div>
-      </div>
+<div class="card">
+<h2>E-mail a přihlášení</h2>
+<p class="muted">Aktuální e-mail: <strong id="settings-current-email"></strong></p>
+<label>Nový e-mail (nepovinné, pro změnu)</label>
+<input type="email" id="settings-new-email" placeholder="novy@email.cz">
+<button id="btn-change-email" class="secondary">Změnit e-mail</button>
+<div id="email-msg" class="ok-msg hidden"></div>
+</div>
 
-      <div class="card">
-        <h2>Váš tarif</h2>
-        <p class="muted">Aktuální tarif: <span class="pill approved" id="settings-tier">free</span> — appka je zdarma díky vlastnímu Gemini klíči, tarif zatím slouží jen pro budoucí rozlišení funkcí.</p>
-      </div>
+<div class="card">
+<h2>Váš tarif</h2>
+<p class="muted">Aktuální tarif: <span class="pill approved" id="settings-tier">free</span> — appka je zdarma díky vlastnímu Gemini klíči, tarif zatím slouží jen pro budoucí rozlišení funkcí.</p>
+</div>
 
-      <div class="card">
-        <h2>Google Gemini API klíč</h2>
-        <p class="muted">Klíč získáte na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně, appka ho používá jen na vaše dotazy.</p>
-        <div id="settings-key-status" class="muted" style="margin-bottom:10px;"></div>
-        <div id="key-input-row" class="hidden">
-          <input type="text" id="gemini-key-input" placeholder="Vložte Gemini API klíč">
-          <button id="btn-save-key">Uložit klíč</button>
-        </div>
-        <button id="btn-toggle-key-input" class="secondary small">Změnit klíč</button>
-        <div id="key-msg" class="ok-msg hidden"></div>
-      </div>
+<div class="card">
+<h2>Google Gemini API klíč</h2>
+<p class="muted">Klíč získáte na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně, appka ho používá jen na vaše dotazy.</p>
+<div id="settings-key-status" class="muted" style="margin-bottom:10px;"></div>
+<div id="key-input-row" class="hidden">
+<input type="text" id="gemini-key-input" placeholder="Vložte Gemini API klíč">
+<button id="btn-save-key">Uložit klíč</button>
+</div>
+<button id="btn-toggle-key-input" class="secondary small">Změnit klíč</button>
+<div id="key-msg" class="ok-msg hidden"></div>
+</div>
 
-    </div><!-- /settings-view -->
+</div><!-- /settings-view -->
 
-  </div>
+</div>
 
 </main>
 
@@ -299,435 +299,438 @@ const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove('hidden');
 const hide = (el) => el.classList.add('hidden');
 const hideAll = () => {
-  ['auth-section','pending-section','rejected-section','app-section'].forEach(id => hide($(id)));
+['auth-section','pending-section','rejected-section','app-section'].forEach(id => hide($(id)));
 };
 
 let currentProfile = null;
 
 async function callFn(name, body) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    await supabase.auth.signOut();
-    location.reload();
-    throw new Error('Relace vypršela, přihlaste se prosím znovu.');
-  }
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    const err = new Error(json.message || json.error || 'request_failed');
-    err.detail = json.detail;
-    throw err;
-  }
-  return json;
+const { data: { session } } = await supabase.auth.getSession();
+if (!session) {
+await supabase.auth.signOut();
+location.reload();
+throw new Error('Relace vypršela, přihlaste se prosím znovu.');
+}
+const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'Authorization': `Bearer ${session.access_token}`,
+},
+body: JSON.stringify(body),
+});
+const json = await res.json();
+if (!res.ok) {
+const err = new Error(json.message || json.error || 'request_failed');
+err.detail = json.detail;
+throw err;
+}
+return json;
 }
 
 async function refreshHeader(approved, isAdmin) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const actions = $('header-actions');
-  if (session) {
-    actions.innerHTML = approved
-      ? `<div class="row">
-           <button class="secondary small" id="btn-nav-dashboard">Appka</button>
-           <button class="secondary small" id="btn-nav-database">Databáze</button>
-           <button class="secondary small" id="btn-nav-settings">Nastavení</button>
-           ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
-           <button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>
-         </div>`
-      : `<button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>`;
-    $('btn-logout-top').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
-    if (approved) {
-      $('btn-nav-dashboard').onclick = () => showView('dashboard');
-      $('btn-nav-settings').onclick = () => showView('settings');
-      if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
-      $('btn-nav-database').onclick = () => showView('database');
-    }
-  } else {
-    actions.innerHTML = '';
-  }
+const { data: { session } } = await supabase.auth.getSession();
+const actions = $('header-actions');
+if (session) {
+actions.innerHTML = approved
+? `<div class="row">
+<button class="secondary small" id="btn-nav-dashboard">Appka</button>
+<button class="secondary small" id="btn-nav-database">Databáze</button>
+<button class="secondary small" id="btn-nav-settings">Nastavení</button>
+${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
+<button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>
+</div>`
+: `<button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>`;
+$('btn-logout-top').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
+if (approved) {
+$('btn-nav-dashboard').onclick = () => showView('dashboard');
+$('btn-nav-settings').onclick = () => showView('settings');
+if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
+$('btn-nav-database').onclick = () => showView('database');
+}
+} else {
+actions.innerHTML = '';
+}
 }
 
 function showView(view) {
-  hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view'));
-  if (view === 'settings') {
-    show($('settings-view'));
-  } else if (view === 'admin') {
-    show($('admin-view'));
-    loadAdminList();
-    loadApprovedList();
-  } else if (view === 'database') {
-    show($('database-view'));
-    loadDatabaseStats();
-    loadDatabaseList(0);
-  } else {
-    show($('dashboard-view'));
-  }
+hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view'));
+if (view === 'settings') {
+show($('settings-view'));
+} else if (view === 'admin') {
+show($('admin-view'));
+loadAdminList();
+loadApprovedList();
+} else if (view === 'database') {
+show($('database-view'));
+loadDatabaseStats();
+loadDatabaseList(0);
+} else {
+show($('dashboard-view'));
+}
 }
 
 async function loadProfile() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    hideAll(); show($('auth-section'));
-    await refreshHeader();
-    return;
-  }
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', session.user.id)
-    .single();
+const { data: { session } } = await supabase.auth.getSession();
+if (!session) {
+hideAll(); show($('auth-section'));
+await refreshHeader();
+return;
+}
+const { data: profile, error } = await supabase
+.from('profiles')
+.select('*')
+.eq('id', session.user.id)
+.single();
 
-  await refreshHeader(profile?.status === 'approved', profile?.is_admin === true);
+await refreshHeader(profile?.status === 'approved', profile?.is_admin === true);
 
-  if (error || !profile) {
-    hideAll(); show($('auth-section'));
-    return;
-  }
-  currentProfile = profile;
+if (error || !profile) {
+hideAll(); show($('auth-section'));
+return;
+}
+currentProfile = profile;
 
-  if (profile.status === 'pending') {
-    hideAll(); show($('pending-section'));
-    renderTrialUI(profile);
-  } else if (profile.status === 'rejected' || profile.status === 'revoked') {
-    hideAll(); show($('rejected-section'));
-  } else if (profile.status === 'approved') {
-    hideAll(); show($('app-section'));
-    showView('dashboard');
+if (profile.status === 'pending') {
+hideAll(); show($('pending-section'));
+renderTrialUI(profile);
+} else if (profile.status === 'rejected' || profile.status === 'revoked') {
+hideAll(); show($('rejected-section'));
+} else if (profile.status === 'approved') {
+hideAll(); show($('app-section'));
+showView('dashboard');
 
-    const hasKey = !!profile.gemini_key_secret_id;
-    $('no-key-banner').classList.toggle('hidden', hasKey);
-    $('settings-key-status').textContent = hasKey ? '✓ Gemini klíč je uložen.' : 'Zatím nemáte uložený Gemini klíč.';
-    $('key-input-row').classList.toggle('hidden', hasKey ? true : false);
-    $('btn-toggle-key-input').textContent = hasKey ? 'Změnit klíč' : 'Vložit klíč';
+const hasKey = !!profile.gemini_key_secret_id;
+$('no-key-banner').classList.toggle('hidden', hasKey);
+$('settings-key-status').textContent = hasKey ? '✓ Gemini klíč je uložen.' : 'Zatím nemáte uložený Gemini klíč.';
+$('key-input-row').classList.toggle('hidden', hasKey ? true : false);
+$('btn-toggle-key-input').textContent = hasKey ? 'Změnit klíč' : 'Vložit klíč';
 
-    $('settings-first-name').value = profile.first_name || '';
-    $('settings-last-name').value = profile.last_name || '';
-    $('settings-phone').value = profile.phone || '';
-    $('settings-current-email').textContent = profile.email || session.user.email;
-    $('settings-tier').textContent = profile.tier || 'free';
-  }
+$('settings-first-name').value = profile.first_name || '';
+$('settings-last-name').value = profile.last_name || '';
+$('settings-phone').value = profile.phone || '';
+$('settings-current-email').textContent = profile.email || session.user.email;
+$('settings-tier').textContent = profile.tier || 'free';
+}
 }
 
 $('goto-settings-from-banner').onclick = () => showView('settings');
 
 $('btn-toggle-key-input').onclick = () => {
-  $('key-input-row').classList.toggle('hidden');
+$('key-input-row').classList.toggle('hidden');
 };
 
 $('btn-save-profile').onclick = async () => {
-  hide($('profile-msg'));
-  const { error } = await supabase.from('profiles').update({
-    first_name: $('settings-first-name').value.trim() || null,
-    last_name: $('settings-last-name').value.trim() || null,
-    phone: $('settings-phone').value.trim() || null,
-  }).eq('id', currentProfile.id);
-  $('profile-msg').textContent = error ? 'Chyba: ' + error.message : 'Uloženo.';
-  $('profile-msg').classList.toggle('error', !!error);
-  $('profile-msg').classList.toggle('ok-msg', !error);
-  show($('profile-msg'));
+hide($('profile-msg'));
+const { error } = await supabase.from('profiles').update({
+first_name: $('settings-first-name').value.trim() || null,
+last_name: $('settings-last-name').value.trim() || null,
+phone: $('settings-phone').value.trim() || null,
+}).eq('id', currentProfile.id);
+$('profile-msg').textContent = error ? 'Chyba: ' + error.message : 'Uloženo.';
+$('profile-msg').classList.toggle('error', !!error);
+$('profile-msg').classList.toggle('ok-msg', !error);
+show($('profile-msg'));
 };
 
 $('btn-change-email').onclick = async () => {
-  hide($('email-msg'));
-  const newEmail = $('settings-new-email').value.trim();
-  if (!newEmail) return;
-  const { error } = await supabase.auth.updateUser({ email: newEmail });
-  $('email-msg').textContent = error ? 'Chyba: ' + error.message : 'Potvrzovací e-mail odeslán na starou i novou adresu, potvrďte prosím změnu tam.';
-  $('email-msg').classList.toggle('error', !!error);
-  $('email-msg').classList.toggle('ok-msg', !error);
-  show($('email-msg'));
+hide($('email-msg'));
+const newEmail = $('settings-new-email').value.trim();
+if (!newEmail) return;
+const { error } = await supabase.auth.updateUser({ email: newEmail });
+$('email-msg').textContent = error ? 'Chyba: ' + error.message : 'Potvrzovací e-mail odeslán na starou i novou adresu, potvrďte prosím změnu tam.';
+$('email-msg').classList.toggle('error', !!error);
+$('email-msg').classList.toggle('ok-msg', !error);
+show($('email-msg'));
 };
 
 $('btn-signin').onclick = async () => {
-  hide($('auth-error')); hide($('auth-ok'));
-  const email = $('auth-email').value.trim();
-  const password = $('auth-password').value;
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
-  await loadProfile();
+hide($('auth-error')); hide($('auth-ok'));
+const email = $('auth-email').value.trim();
+const password = $('auth-password').value;
+const { error } = await supabase.auth.signInWithPassword({ email, password });
+if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
+await loadProfile();
 };
 
 $('btn-signup').onclick = async () => {
-  hide($('auth-error')); hide($('auth-ok'));
-  const email = $('auth-email').value.trim();
-  const password = $('auth-password').value;
-  if (password.length < 6) {
-    $('auth-error').textContent = 'Heslo musí mít alespoň 6 znaků.';
-    show($('auth-error'));
-    return;
-  }
-  const { error } = await supabase.auth.signUp({ email, password });
-  if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
-  $('auth-ok').textContent = 'Účet vytvořen. Nyní čeká na schválení správcem aplikace.';
-  show($('auth-ok'));
-  await loadProfile();
+hide($('auth-error')); hide($('auth-ok'));
+const email = $('auth-email').value.trim();
+const password = $('auth-password').value;
+if (password.length < 6) {
+$('auth-error').textContent = 'Heslo musí mít alespoň 6 znaků.';
+show($('auth-error'));
+return;
+}
+const { error } = await supabase.auth.signUp({ email, password });
+if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
+$('auth-ok').textContent = 'Účet vytvořen. Nyní čeká na schválení správcem aplikace.';
+show($('auth-ok'));
+await loadProfile();
 };
 
 $('btn-logout-pending').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 $('btn-logout-rejected').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 
 $('btn-save-key').onclick = async () => {
-  hide($('key-msg'));
-  const key = $('gemini-key-input').value.trim();
-  if (!key) return;
-  try {
-    await callFn('save-gemini-key', { gemini_api_key: key });
-    $('gemini-key-input').value = '';
-    $('key-msg').textContent = 'Klíč uložen.';
-    $('key-msg').classList.remove('error');
-    $('key-msg').classList.add('ok-msg');
-    show($('key-msg'));
-    $('settings-key-status').textContent = '✓ Gemini klíč je uložen.';
-    $('key-input-row').classList.add('hidden');
-    $('btn-toggle-key-input').textContent = 'Změnit klíč';
-    $('no-key-banner').classList.add('hidden');
-  } catch (e) {
-    $('key-msg').textContent = 'Chyba: ' + e.message;
-    $('key-msg').classList.remove('ok-msg');
-    $('key-msg').classList.add('error');
-    show($('key-msg'));
-  }
+hide($('key-msg'));
+const key = $('gemini-key-input').value.trim();
+if (!key) return;
+try {
+await callFn('save-gemini-key', { gemini_api_key: key });
+$('gemini-key-input').value = '';
+$('key-msg').textContent = 'Klíč uložen.';
+$('key-msg').classList.remove('error');
+$('key-msg').classList.add('ok-msg');
+show($('key-msg'));
+$('settings-key-status').textContent = '✓ Gemini klíč je uložen.';
+$('key-input-row').classList.add('hidden');
+$('btn-toggle-key-input').textContent = 'Změnit klíč';
+$('no-key-banner').classList.add('hidden');
+} catch (e) {
+$('key-msg').textContent = 'Chyba: ' + e.message;
+$('key-msg').classList.remove('ok-msg');
+$('key-msg').classList.add('error');
+show($('key-msg'));
+}
 };
 
 function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function renderAnswer(text) {
-  const escaped = escapeHtml(text);
-  const lines = escaped.split('\n');
-  let html = '';
-  let inList = false;
-  for (const line of lines) {
-    const bulletMatch = line.match(/^\s*[*-]\s+(.*)/);
-    if (bulletMatch) {
-      if (!inList) { html += '<ul style="margin:8px 0; padding-left:20px;">'; inList = true; }
-      html += `<li>${bulletMatch[1].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</li>`;
-    } else {
-      if (inList) { html += '</ul>'; inList = false; }
-      if (line.trim() === '') { html += '<br>'; }
-      else { html += `<p style="margin:6px 0;">${line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`; }
-    }
-  }
-  if (inList) html += '</ul>';
-  return html;
+const escaped = escapeHtml(text);
+const lines = escaped.split('\n');
+let html = '';
+let inList = false;
+for (const line of lines) {
+const bulletMatch = line.match(/^\s*[*-]\s+(.*)/);
+if (bulletMatch) {
+if (!inList) { html += '<ul style="margin:8px 0; padding-left:20px;">'; inList = true; }
+html += `<li>${bulletMatch[1].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</li>`;
+} else {
+if (inList) { html += '</ul>'; inList = false; }
+if (line.trim() === '') { html += '<br>'; }
+else { html += `<p style="margin:6px 0;">${line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`; }
+}
+}
+if (inList) html += '</ul>';
+return html;
 }
 
 function sourceRow(s) {
-  const icon = s.type === 'zakon' ? '📜' : (s.type === 'web' ? '🌐' : '⚖️');
-  const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
-  const safeUrl = s.url && /^https?:\/\//i.test(s.url) ? s.url : null;
-  return safeUrl
-    ? `<div class="source-item">${label} — <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
-    : `<div class="source-item">${label}</div>`;
+const icon = s.type === 'zakon' ? '📜' : (s.type === 'web' ? '🌐' : '⚖️');
+const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
+const safeUrl = s.url && /^https?:\/\//i.test(s.url) ? s.url : null;
+return safeUrl
+? `<div class="source-item">${label} — <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
+: `<div class="source-item">${label}</div>`;
 }
 
 $('btn-ask').onclick = async () => {
-  hide($('ask-error')); hide($('answer-card'));
-  const query = $('query-input').value.trim();
-  if (!query) return;
-  show($('ask-spinner'));
-  try {
-    const result = await callFn('ai-query', { query, use_web: $('web-toggle').checked, as_of_date: $('as-of-date').value || null });
-    $('answer-text').innerHTML = (result.as_of_date ? '<div class="as-of-badge">Zobrazeno znění platné k datu ' + escapeHtml(result.as_of_date.split('-').reverse().join('.')) + ' (nikoli aktuální znění)</div>' : '') + (result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)');
-    const allSources = [...(result.sources || []), ...(result.web_sources || [])];
-    $('answer-sources').innerHTML = allSources.length
-      ? allSources.map(sourceRow).join('')
-      : '<div class="source-item">Žádné zdroje z databáze ani z webu k tomuto dotazu.</div>';
-    show($('answer-card'));
-  } catch (e) {
-    $('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
-    show($('ask-error'));
-  } finally {
-    hide($('ask-spinner'));
-  }
+hide($('ask-error')); hide($('answer-card'));
+const query = $('query-input').value.trim();
+if (!query) return;
+show($('ask-spinner'));
+try {
+const result = await callFn('ai-query', { query, use_web: $('web-toggle').checked, as_of_date: $('as-of-date').value || null });
+$('answer-text').innerHTML = (result.as_of_date ? '<div class="as-of-badge">Zobrazeno znění platné k datu ' + escapeHtml(result.as_of_date.split('-').reverse().join('.')) + ' (nikoli aktuální znění)</div>' : '') + (result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)');
+const allSources = [...(result.sources || []), ...(result.web_sources || [])];
+$('answer-sources').innerHTML = allSources.length
+? allSources.map(sourceRow).join('')
+: '<div class="source-item">Žádné zdroje z databáze ani z webu k tomuto dotazu.</div>';
+show($('answer-card'));
+} catch (e) {
+$('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
+show($('ask-error'));
+} finally {
+hide($('ask-spinner'));
+}
 };
 
+$('query-input').addEventListener('keydown', (e) => {
+if (e.key === 'Enter') { e.preventDefault(); $('btn-ask').click(); }
+});
+
 async function loadAdminList() {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true });
-  const list = $('admin-list');
-  if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) { list.textContent = 'Žádné čekající žádosti.'; return; }
-  list.innerHTML = '';
-  data.forEach(p => {
-    const row = document.createElement('div');
-    row.className = 'admin-row';
-    row.innerHTML = `<span>${escapeHtml(p.email || '')}</span>`;
-    const btnApprove = document.createElement('button');
-    btnApprove.className = 'small';
-    btnApprove.textContent = 'Schválit';
-    btnApprove.onclick = async () => {
-      const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'approved' });
-      if (error) { alert('Chyba při schvalování: ' + error.message); return; }
-      loadAdminList();
-    };
-    const btnReject = document.createElement('button');
-    btnReject.className = 'small secondary';
-    btnReject.textContent = 'Zamítnout';
-    btnReject.onclick = async () => {
-      const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'rejected' });
-      if (error) { alert('Chyba při zamítání: ' + error.message); return; }
-      loadAdminList();
-    };
-    row.appendChild(btnApprove);
-    row.appendChild(btnReject);
-    list.appendChild(row);
-  });
+const { data, error } = await supabase
+.from('profiles')
+.select('*')
+.eq('status', 'pending')
+.order('created_at', { ascending: true });
+const list = $('admin-list');
+if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+if (!data || data.length === 0) { list.textContent = 'Žádné čekající žádosti.'; return; }
+list.innerHTML = '';
+data.forEach(p => {
+const row = document.createElement('div');
+row.className = 'admin-row';
+row.innerHTML = `<span>${escapeHtml(p.email || '')}</span>`;
+const btnApprove = document.createElement('button');
+btnApprove.className = 'small';
+btnApprove.textContent = 'Schválit';
+btnApprove.onclick = async () => {
+const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'approved' });
+if (error) { alert('Chyba při schvalování: ' + error.message); return; }
+loadAdminList();
+};
+const btnReject = document.createElement('button');
+btnReject.className = 'small secondary';
+btnReject.textContent = 'Zamítnout';
+btnReject.onclick = async () => {
+const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'rejected' });
+if (error) { alert('Chyba při zamítání: ' + error.message); return; }
+loadAdminList();
+};
+row.appendChild(btnApprove);
+row.appendChild(btnReject);
+list.appendChild(row);
+});
 }
 
 async function loadApprovedList() {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('status', 'approved')
-    .order('approved_at', { ascending: false });
-  const list = $('approved-list');
-  if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) { list.textContent = 'Zatím žádní schválení uživatelé.'; return; }
-  list.innerHTML = '';
-  data.forEach(p => {
-    const row = document.createElement('div');
-    row.className = 'admin-row';
-    const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
-    const approvedDate = p.approved_at ? new Date(p.approved_at).toLocaleDateString('cs-CZ') : '';
-    row.innerHTML = `<span>${escapeHtml(p.email)}${fullName ? ' – ' + escapeHtml(fullName) : ''}
-      <span class="muted">${approvedDate ? ' (schváleno ' + approvedDate + ')' : ''}${p.is_admin ? ' · admin' : ''}</span></span>`;
-    if (!p.is_admin) {
-      const btnRevoke = document.createElement('button');
-      btnRevoke.className = 'small secondary';
-      btnRevoke.textContent = 'Odebrat přístup';
-      btnRevoke.onclick = async () => {
-        if (!confirm(`Opravdu odebrat přístup uživateli ${p.email}?`)) return;
-        const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'revoked' });
-        if (error) { alert('Chyba při odebírání přístupu: ' + error.message); return; }
-        loadApprovedList();
-      };
-      row.appendChild(btnRevoke);
-    }
-    list.appendChild(row);
-  });
+const { data, error } = await supabase
+.from('profiles')
+.select('*')
+.eq('status', 'approved')
+.order('approved_at', { ascending: false });
+const list = $('approved-list');
+if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+if (!data || data.length === 0) { list.textContent = 'Zatím žádní schválení uživatelé.'; return; }
+list.innerHTML = '';
+data.forEach(p => {
+const row = document.createElement('div');
+row.className = 'admin-row';
+const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
+const approvedDate = p.approved_at ? new Date(p.approved_at).toLocaleDateString('cs-CZ') : '';
+row.innerHTML = `<span>${escapeHtml(p.email)}${fullName ? ' – ' + escapeHtml(fullName) : ''}
+<span class="muted">${approvedDate ? ' (schváleno ' + approvedDate + ')' : ''}${p.is_admin ? ' · admin' : ''}</span></span>`;
+if (!p.is_admin) {
+const btnRevoke = document.createElement('button');
+btnRevoke.className = 'small secondary';
+btnRevoke.textContent = 'Odebrat přístup';
+btnRevoke.onclick = async () => {
+if (!confirm(`Opravdu odebrat přístup uživateli ${p.email}?`)) return;
+const { error } = await supabase.rpc('admin_set_profile_status', { p_user_id: p.id, p_status: 'revoked' });
+if (error) { alert('Chyba při odebírání přístupu: ' + error.message); return; }
+loadApprovedList();
+};
+row.appendChild(btnRevoke);
 }
-
+list.appendChild(row);
+});
+}
 
 let dbPage = 0;
 let dbTotalPages = 1;
 const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
-  const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
-  return map[t] || t;
+const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
+return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-  const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava'];
-  const el = $('db-stats');
-  el.textContent = 'Načítám…';
-  const results = await Promise.all(types.map(t =>
-    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t)
-  ));
-  const total = results.reduce((s, r) => s + (r.count || 0), 0);
-  const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`);
-  el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
+const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava'];
+const el = $('db-stats');
+el.textContent = 'Načítám…';
+const results = await Promise.all(types.map(t =>
+supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t)
+));
+const total = results.reduce((s, r) => s + (r.count || 0), 0);
+const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`);
+el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
 }
 
 async function loadDatabaseList(page) {
-  dbPage = page;
-  const list = $('db-list');
-  list.textContent = 'Načítám…';
-  const search = $('db-search').value.trim();
-  const typeFilter = $('db-type-filter').value;
-  let query = supabase
-    .from('documents')
-    .select('id,title,doc_type,issuer,decision_date,url', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
-  if (search) query = query.ilike('title', `%${search}%`);
-  if (typeFilter) query = query.eq('doc_type', typeFilter);
-  const { data, error, count } = await query;
-  if (error) { list.textContent = 'Chyba: ' + error.message; return; }
-  if (!data || data.length === 0) {
-    list.textContent = 'Žádné záznamy.';
-    $('db-page-info').textContent = '';
-    $('btn-db-prev').disabled = true;
-    $('btn-db-next').disabled = true;
-    return;
-  }
-  list.innerHTML = '';
-  const embedStatusMap = new Map();
-  if (data && data.length) {
-    const { data: statusRows } = await supabase.rpc('get_chunk_embedding_status', { p_document_ids: data.map(x => x.id) });
-    for (const s of (statusRows || [])) embedStatusMap.set(s.document_id, s);
-  }
-  data.forEach(d => {
-    const row = document.createElement('div');
-    row.className = 'admin-row';
-    const dateStr = d.decision_date ? new Date(d.decision_date).toLocaleDateString('cs-CZ') : '';
-    const metaBits = [docTypeLabel(d.doc_type)];
-    if (d.issuer) metaBits.push(escapeHtml(d.issuer));
-    if (dateStr) metaBits.push(dateStr);
-    row.innerHTML = `<span><strong>${escapeHtml(d.title || '')}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
-    const st = embedStatusMap.get(d.id);
-    const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.alignItems = 'center';
-    actions.style.gap = '8px';
-    actions.style.flexShrink = '0';
-    const badge = document.createElement('span');
-    badge.style.fontSize = '0.85em';
-    badge.style.padding = '2px 8px';
-    badge.style.borderRadius = '10px';
-    badge.style.whiteSpace = 'nowrap';
-    if (!st || st.total === 0) {
-      badge.style.background = 'rgba(224,90,90,0.15)';
-      badge.style.color = 'var(--danger)';
-      badge.textContent = 'čeká na zpracování';
-    } else if (st.embedded >= st.total) {
-      badge.style.background = 'rgba(63,191,127,0.15)';
-      badge.style.color = 'var(--ok)';
-      badge.textContent = 'v databázi';
-    } else {
-      badge.style.background = 'rgba(224,178,63,0.15)';
-      badge.style.color = 'var(--warn)';
-      badge.textContent = `částečně (${st.embedded}/${st.total})`;
-    }
-    actions.appendChild(badge);
-    if (d.url) {
-      const a = document.createElement('a');
-      a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
-      actions.appendChild(a);
-    }
-    row.appendChild(actions);
-    list.appendChild(row);
-  });
-  const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
-  dbTotalPages = totalPages;
-  $('db-page-info').textContent = `Strana ${page + 1} / ${totalPages}`;
-  $('btn-db-prev').disabled = page === 0;
-  $('btn-db-next').disabled = page + 1 >= totalPages;
-  $('btn-db-first').disabled = page === 0;
-  $('btn-db-last').disabled = page + 1 >= totalPages;
-  const pageNumbers = $('db-page-numbers');
-  pageNumbers.innerHTML = '';
-  const startP = Math.max(0, page - 5);
-  const endP = Math.min(totalPages - 1, page + 5);
-  for (let p = startP; p <= endP; p++) {
-    const pBtn = document.createElement('button');
-    pBtn.className = 'secondary small' + (p === page ? ' active' : '');
-    pBtn.textContent = String(p + 1);
-    if (p === page) pBtn.disabled = true;
-    pBtn.onclick = () => loadDatabaseList(p);
-    pageNumbers.appendChild(pBtn);
-  }
+dbPage = page;
+const list = $('db-list');
+list.textContent = 'Načítám…';
+const search = $('db-search').value.trim();
+const typeFilter = $('db-type-filter').value;
+let query = supabase
+.from('documents')
+.select('id,title,doc_type,issuer,decision_date,url', { count: 'exact' })
+.order('created_at', { ascending: false })
+.range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
+if (search) query = query.ilike('title', `%${search}%`);
+if (typeFilter) query = query.eq('doc_type', typeFilter);
+const { data, error, count } = await query;
+if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+if (!data || data.length === 0) {
+list.textContent = 'Žádné záznamy.';
+$('db-page-info').textContent = '';
+$('btn-db-prev').disabled = true;
+$('btn-db-next').disabled = true;
+return;
+}
+list.innerHTML = '';
+const embedStatusMap = new Map();
+if (data && data.length) {
+const { data: statusRows } = await supabase.rpc('get_chunk_embedding_status', { p_document_ids: data.map(x => x.id) });
+for (const s of (statusRows || [])) embedStatusMap.set(s.document_id, s);
+}
+data.forEach(d => {
+const row = document.createElement('div');
+row.className = 'admin-row';
+const dateStr = d.decision_date ? new Date(d.decision_date).toLocaleDateString('cs-CZ') : '';
+const metaBits = [docTypeLabel(d.doc_type)];
+if (d.issuer) metaBits.push(escapeHtml(d.issuer));
+if (dateStr) metaBits.push(dateStr);
+row.innerHTML = `<span><strong>${escapeHtml(d.title || '')}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
+const st = embedStatusMap.get(d.id);
+const actions = document.createElement('div');
+actions.style.display = 'flex';
+actions.style.alignItems = 'center';
+actions.style.gap = '8px';
+actions.style.flexShrink = '0';
+const badge = document.createElement('span');
+badge.style.fontSize = '0.85em';
+badge.style.padding = '2px 8px';
+badge.style.borderRadius = '10px';
+badge.style.whiteSpace = 'nowrap';
+if (!st || st.total === 0) {
+badge.style.background = 'rgba(224,90,90,0.15)';
+badge.style.color = 'var(--danger)';
+badge.textContent = 'čeká na zpracování';
+} else if (st.embedded >= st.total) {
+badge.style.background = 'rgba(63,191,127,0.15)';
+badge.style.color = 'var(--ok)';
+badge.textContent = 'v databázi';
+} else {
+badge.style.background = 'rgba(224,178,63,0.15)';
+badge.style.color = 'var(--warn)';
+badge.textContent = `částečně (${st.embedded}/${st.total})`;
+}
+actions.appendChild(badge);
+if (d.url) {
+const a = document.createElement('a');
+a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
+actions.appendChild(a);
+}
+row.appendChild(actions);
+list.appendChild(row);
+});
+const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
+dbTotalPages = totalPages;
+$('db-page-info').textContent = `Strana ${page + 1} / ${totalPages}`;
+$('btn-db-prev').disabled = page === 0;
+$('btn-db-next').disabled = page + 1 >= totalPages;
+$('btn-db-first').disabled = page === 0;
+$('btn-db-last').disabled = page + 1 >= totalPages;
+const pageNumbers = $('db-page-numbers');
+pageNumbers.innerHTML = '';
+const startP = Math.max(0, page - 5);
+const endP = Math.min(totalPages - 1, page + 5);
+for (let p = startP; p <= endP; p++) {
+const pBtn = document.createElement('button');
+pBtn.className = 'secondary small' + (p === page ? ' active' : '');
+pBtn.textContent = String(p + 1);
+if (p === page) pBtn.disabled = true;
+pBtn.onclick = () => loadDatabaseList(p);
+pageNumbers.appendChild(pBtn);
+}
 }
 
 $('btn-db-search').onclick = () => loadDatabaseList(0);
@@ -736,74 +739,80 @@ $('btn-db-last').onclick = () => loadDatabaseList(dbTotalPages - 1);
 $('btn-db-prev').onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); };
 $('btn-db-next').onclick = () => loadDatabaseList(dbPage + 1);
 
+$('db-search').addEventListener('keydown', (e) => {
+if (e.key === 'Enter') { e.preventDefault(); loadDatabaseList(0); }
+});
+
 const TRIAL_LIMIT = 20;
 
 function renderTrialUI(profile) {
-  const remaining = Math.max(0, TRIAL_LIMIT - (profile.trial_queries_used || 0));
-  $('trial-remaining-text').textContent = `zbývá ${remaining} z ${TRIAL_LIMIT} dotazů`;
-  const hasKey = !!profile.gemini_key_secret_id;
-  hide($('trial-key-card')); hide($('trial-query-card')); hide($('trial-exhausted-card'));
-  if (remaining <= 0) {
-    show($('trial-exhausted-card'));
-  } else if (!hasKey) {
-    show($('trial-key-card'));
-  } else {
-    show($('trial-query-card'));
-  }
+const remaining = Math.max(0, TRIAL_LIMIT - (profile.trial_queries_used || 0));
+$('trial-remaining-text').textContent = `zbývá ${remaining} z ${TRIAL_LIMIT} dotazů`;
+const hasKey = !!profile.gemini_key_secret_id;
+hide($('trial-key-card')); hide($('trial-query-card')); hide($('trial-exhausted-card'));
+if (remaining <= 0) {
+show($('trial-exhausted-card'));
+} else if (!hasKey) {
+show($('trial-key-card'));
+} else {
+show($('trial-query-card'));
+}
 }
 
 $('btn-trial-save-key').onclick = async () => {
-  hide($('trial-key-msg'));
-  const key = $('trial-key-input').value.trim();
-  if (!key) return;
-  try {
-    await callFn('save-gemini-key', { gemini_api_key: key });
-    $('trial-key-input').value = '';
-    $('trial-key-msg').textContent = 'Klíč uložen.';
-    $('trial-key-msg').classList.remove('error');
-    $('trial-key-msg').classList.add('ok-msg');
-    show($('trial-key-msg'));
-    await loadProfile();
-  } catch (e) {
-    $('trial-key-msg').textContent = 'Chyba: ' + e.message;
-    $('trial-key-msg').classList.remove('ok-msg');
-    $('trial-key-msg').classList.add('error');
-    show($('trial-key-msg'));
-  }
+hide($('trial-key-msg'));
+const key = $('trial-key-input').value.trim();
+if (!key) return;
+try {
+await callFn('save-gemini-key', { gemini_api_key: key });
+$('trial-key-input').value = '';
+$('trial-key-msg').textContent = 'Klíč uložen.';
+$('trial-key-msg').classList.remove('error');
+$('trial-key-msg').classList.add('ok-msg');
+show($('trial-key-msg'));
+await loadProfile();
+} catch (e) {
+$('trial-key-msg').textContent = 'Chyba: ' + e.message;
+$('trial-key-msg').classList.remove('ok-msg');
+$('trial-key-msg').classList.add('error');
+show($('trial-key-msg'));
+}
 };
 
 $('btn-trial-ask').onclick = async () => {
-  hide($('trial-ask-error')); hide($('trial-answer-card'));
-  const query = $('trial-query-input').value.trim();
-  if (!query) return;
-  show($('trial-ask-spinner'));
-  try {
-    const result = await callFn('ai-query', { query, use_web: false });
-    $('trial-answer-text').innerHTML = result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)';
-    const allSources = [...(result.sources || []), ...(result.web_sources || [])];
-    $('trial-answer-sources').innerHTML = allSources.length
-      ? allSources.map(sourceRow).join('')
-      : '<div class="source-item">Žádné zdroje z databáze k tomuto dotazu.</div>';
-    show($('trial-answer-card'));
-    if (typeof result.trial_remaining === 'number') {
-      $('trial-remaining-text').textContent = `zbývá ${result.trial_remaining} z ${TRIAL_LIMIT} dotazů`;
-      if (result.trial_remaining <= 0) {
-        hide($('trial-query-card'));
-        show($('trial-exhausted-card'));
-      }
-    }
-  } catch (e) {
-    $('trial-ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
-    show($('trial-ask-error'));
-  } finally {
-    hide($('trial-ask-spinner'));
-  }
+hide($('trial-ask-error')); hide($('trial-answer-card'));
+const query = $('trial-query-input').value.trim();
+if (!query) return;
+show($('trial-ask-spinner'));
+try {
+const result = await callFn('ai-query', { query, use_web: false });
+$('trial-answer-text').innerHTML = result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)';
+const allSources = [...(result.sources || []), ...(result.web_sources || [])];
+$('trial-answer-sources').innerHTML = allSources.length
+? allSources.map(sourceRow).join('')
+: '<div class="source-item">Žádné zdroje z databáze k tomuto dotazu.</div>';
+show($('trial-answer-card'));
+if (typeof result.trial_remaining === 'number') {
+$('trial-remaining-text').textContent = `zbývá ${result.trial_remaining} z ${TRIAL_LIMIT} dotazů`;
+if (result.trial_remaining <= 0) {
+hide($('trial-query-card'));
+show($('trial-exhausted-card'));
+}
+}
+} catch (e) {
+$('trial-ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
+show($('trial-ask-error'));
+} finally {
+hide($('trial-ask-spinner'));
+}
 };
+
+$('trial-query-input').addEventListener('keydown', (e) => {
+if (e.key === 'Enter') { e.preventDefault(); $('btn-trial-ask').click(); }
+});
 
 loadProfile();
 </script>
 
-
-
 </body></html>
-<!-- deploy trigger 2026-07-17 -->
+<!-- deploy trigger 2026-07-20: enter-to-submit -->
