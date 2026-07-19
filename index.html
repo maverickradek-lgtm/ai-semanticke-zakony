@@ -93,6 +93,22 @@ font-weight: 600;
 .spinner { color: var(--muted); font-size: 13px; }
 a.link-btn { color: var(--accent); font-size: 13px; cursor: pointer; text-decoration: underline; }
 footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+.input-wrap { position: relative; }
+.input-wrap input[type=text] { padding-right: 34px; margin-bottom: 0; }
+.input-clear-btn {
+position: absolute;
+top: 50%;
+right: 10px;
+transform: translateY(-50%);
+color: var(--danger);
+font-size: 20px;
+font-weight: 700;
+line-height: 1;
+cursor: pointer;
+user-select: none;
+display: none;
+}
+.input-clear-btn:hover { opacity: 0.75; }
 </style>
 </head>
 <body>
@@ -176,7 +192,10 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px
 
 <div class="card">
 <h2>Dotaz</h2>
+<div class="input-wrap" style="margin-bottom:14px;">
 <input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
+<span class="input-clear-btn" id="query-clear-btn" title="Smazat text">&times;</span>
+</div>
 <div class="toggle-row">
 <input type="checkbox" id="web-toggle">
 <label for="web-toggle" style="margin:0;">Hledat i na webu (mimo naši databázi)</label>
@@ -212,7 +231,10 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px
 </div>
 <div class="card">
 <div class="row" style="margin-bottom:14px;">
-<input type="text" id="db-search" placeholder="Hledat v názvech…" style="flex:1; margin-bottom:0;">
+<div class="input-wrap" style="flex:1;">
+<input type="text" id="db-search" placeholder="Hledat v názvech…">
+<span class="input-clear-btn" id="db-search-clear-btn" title="Smazat text">&times;</span>
+</div>
 <select id="db-type-filter" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel-2); color:var(--text);">
 <option value="">Vše</option>
 <option value="zakon">Zákon</option>
@@ -553,6 +575,22 @@ $('query-input').addEventListener('keydown', (e) => {
 if (e.key === 'Enter') { e.preventDefault(); $('btn-ask').click(); }
 });
 
+function setupClearButton(inputId, btnId, onClear) {
+const input = $(inputId);
+const btn = $(btnId);
+const toggle = () => { btn.style.display = input.value ? 'block' : 'none'; };
+input.addEventListener('input', toggle);
+toggle();
+btn.addEventListener('click', () => {
+input.value = '';
+toggle();
+input.focus();
+if (onClear) onClear();
+});
+}
+setupClearButton('query-input', 'query-clear-btn');
+setupClearButton('db-search', 'db-search-clear-btn', () => loadDatabaseList(0));
+
 async function loadAdminList() {
 const { data, error } = await supabase
 .from('profiles')
@@ -815,4 +853,4 @@ loadProfile();
 </script>
 
 </body></html>
-<!-- deploy trigger 2026-07-20: enter-to-submit -->
+<!-- deploy trigger 2026-07-20: clear-buttons -->
