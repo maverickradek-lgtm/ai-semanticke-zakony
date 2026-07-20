@@ -337,7 +337,7 @@ display: none;
 <h3 style="margin-top:0;">Kontaktujte nás</h3>
 <div class="muted" style="font-size:13px;margin-bottom:14px;">Napište nám dotaz nebo zpětnou vazbu k aplikaci ParagrAlf.</div>
 <input type="text" id="contact-name" placeholder="Jméno (nepovinné)" style="width:100%;margin-bottom:10px;box-sizing:border-box;">
-<input type="email" id="contact-email" placeholder="Váš e-mail (pro odpověď, nepovinné)" style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+<input type="email" id="contact-email" placeholder="Váš e-mail (potřebujeme pro odpověď)" required style="width:100%;margin-bottom:10px;box-sizing:border-box;">
 <textarea id="contact-message" placeholder="Vaše zpráva" rows="4" style="width:100%;margin-bottom:10px;box-sizing:border-box;"></textarea>
 <input type="checkbox" name="botcheck" id="contact-botcheck" style="display:none;" tabindex="-1" autocomplete="off">
 <button id="contact-submit-btn">Odeslat</button>
@@ -1003,6 +1003,9 @@ if (btnDocReview) {
     const resultEl = $('contact-result');
     resultEl.textContent = '';
     resultEl.style.color = '';
+    const emailForCheck = $('contact-email').value.trim();
+    if (!emailForCheck) { resultEl.textContent = 'Vyplňte prosím e-mail, potřebujeme ho pro odpověď.'; resultEl.style.color = 'crimson'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForCheck)) { resultEl.textContent = 'Zadejte prosím platný e-mail.'; resultEl.style.color = 'crimson'; return; }
     if (!message) { resultEl.textContent = 'Napište prosím zprávu.'; resultEl.style.color = 'crimson'; return; }
     if ($('contact-botcheck').checked) return;
     const btn = $('contact-submit-btn');
@@ -1015,9 +1018,9 @@ if (btnDocReview) {
         from_name: 'ParagrAlf - kontaktni formular',
         name: $('contact-name').value.trim() || 'Neuvedeno',
         message: message,
+        email: emailForCheck,
+        replyto: emailForCheck,
       };
-      const emailVal = $('contact-email').value.trim();
-      if (emailVal) payload.email = emailVal;
       const res = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
