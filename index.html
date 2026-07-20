@@ -673,6 +673,19 @@ if (error) { alert('Chyba při odebírání přístupu: ' + error.message); retu
 loadApprovedList();
 };
 row.appendChild(btnRevoke);
+const prioLabel = document.createElement('label');
+prioLabel.className = 'small muted';
+prioLabel.style.marginLeft = '8px';
+const prioCheckbox = document.createElement('input');
+prioCheckbox.type = 'checkbox';
+prioCheckbox.checked = !!p.can_prioritize_embedding;
+prioCheckbox.onchange = async () => {
+const { error } = await supabase.from('profiles').update({ can_prioritize_embedding: prioCheckbox.checked }).eq('id', p.id);
+if (error) { alert('Chyba: ' + error.message); prioCheckbox.checked = !prioCheckbox.checked; }
+};
+prioLabel.appendChild(prioCheckbox);
+prioLabel.appendChild(document.createTextNode(' muze prioritizovat embedding'));
+row.appendChild(prioLabel);
 }
 list.appendChild(row);
 });
@@ -707,7 +720,7 @@ const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 let query = supabase
 .from('documents')
-.select('id,title,doc_type,issuer,decision_date,url,external_id', { count: 'exact' })
+.select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority', { count: 'exact' })
 .order('created_at', { ascending: false })
 .range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
 if (search) query = query.ilike('title', `%${search}%`);
@@ -760,6 +773,21 @@ badge.style.color = 'var(--warn)';
 badge.textContent = `částečně (${st.embedded}/${st.total})`;
 }
 actions.appendChild(badge);
+if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding)) {
+const prioLabel = document.createElement('label');
+prioLabel.className = 'small muted';
+prioLabel.style.display = 'flex'; prioLabel.style.alignItems = 'center'; prioLabel.style.gap = '4px';
+const prioCheckbox = document.createElement('input');
+prioCheckbox.type = 'checkbox';
+prioCheckbox.checked = (d.embed_priority || 0) > 0;
+prioCheckbox.onchange = async () => {
+const { error } = await supabase.rpc('set_embed_priority', { p_document_id: d.id, p_priority: prioCheckbox.checked });
+if (error) { alert('Chyba: ' + error.message); prioCheckbox.checked = !prioCheckbox.checked; }
+};
+prioLabel.appendChild(prioCheckbox);
+prioLabel.appendChild(document.createTextNode('priorita'));
+actions.appendChild(prioLabel);
+}
 if (d.url) {
 const a = document.createElement('a');
 a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
