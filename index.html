@@ -213,6 +213,20 @@ display: none;
 <div class="sources" id="answer-sources"></div>
 </div>
 
+<section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
+<h2 style="margin-bottom:6px;">Posouzení dokumentu <span class="muted" style="font-size:13px;font-weight:400;">(beta)</span></h2>
+<div class="doc-disclaimer">Toto je obecné vysvětlení dokumentu s odkazy na související zákony a judikaturu z naší databáze – <strong>ne právní posouzení ani závazné stanovisko</strong>. Všechny extrahované údaje (data, lhůty, čísla jednací) si vždy ověřte přímo v originálním dokumentu. Pro cokoliv s právními důsledky se poraďte s odborníkem.</div>
+<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain" style="margin-bottom:10px;display:block;">
+<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT. Max. velikost 6&nbsp;MB. (Wordové dokumenty zatím nejsou podporované.)</div>
+<button id="btn-doc-review">Nahrát a vysvětlit</button>
+<span id="doc-spinner" class="hidden muted" style="margin-left:10px;">Zpracovávám…</span>
+<div id="doc-error" class="hidden" style="color:var(--danger);margin-top:12px;"></div>
+<div id="doc-answer-card" class="hidden" style="margin-top:18px;">
+<div id="doc-answer-text"></div>
+<h3 style="margin-top:18px;font-size:15px;">Související zdroje</h3>
+<div id="doc-answer-sources"></div>
+</div>
+</section>
 </div><!-- /dashboard-view -->
 
 <div id="admin-view" class="hidden">
@@ -304,20 +318,7 @@ display: none;
 </div>
 
 </div><!-- /settings-view -->
-<section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
-<h2 style="margin-bottom:6px;">Posouzení dokumentu <span class="muted" style="font-size:13px;font-weight:400;">(beta)</span></h2>
-<div class="doc-disclaimer">Toto je obecné vysvětlení dokumentu s odkazy na související zákony a judikaturu z naší databáze – <strong>ne právní posouzení ani závazné stanovisko</strong>. Všechny extrahované údaje (data, lhůty, čísla jednací) si vždy ověřte přímo v originálním dokumentu. Pro cokoliv s právními důsledky se poraďte s odborníkem.</div>
-<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain" style="margin-bottom:10px;display:block;">
-<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT. Max. velikost 6&nbsp;MB. (Wordové dokumenty zatím nejsou podporované.)</div>
-<button id="btn-doc-review">Nahrát a vysvětlit</button>
-<span id="doc-spinner" class="hidden muted" style="margin-left:10px;">Zpracovávám…</span>
-<div id="doc-error" class="hidden" style="color:var(--danger);margin-top:12px;"></div>
-<div id="doc-answer-card" class="hidden" style="margin-top:18px;">
-<div id="doc-answer-text"></div>
-<h3 style="margin-top:18px;font-size:15px;">Související zdroje</h3>
-<div id="doc-answer-sources"></div>
-</div>
-</section>
+
 
 
 </div>
