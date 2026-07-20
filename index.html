@@ -707,7 +707,7 @@ const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 let query = supabase
 .from('documents')
-.select('id,title,doc_type,issuer,decision_date,url', { count: 'exact' })
+.select('id,title,doc_type,issuer,decision_date,url,external_id', { count: 'exact' })
 .order('created_at', { ascending: false })
 .range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
 if (search) query = query.ilike('title', `%${search}%`);
@@ -734,7 +734,7 @@ const dateStr = d.decision_date ? new Date(d.decision_date).toLocaleDateString('
 const metaBits = [docTypeLabel(d.doc_type)];
 if (d.issuer) metaBits.push(escapeHtml(d.issuer));
 if (dateStr) metaBits.push(dateStr);
-row.innerHTML = `<span><strong>${escapeHtml(d.title || '')}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
+row.innerHTML = `<span><strong>${escapeHtml((function(){const num=(d.external_id||'').match(/(\d+\/\d+)/);return num? num[1]+' ' : '';})() + (d.title || ''))}</strong><br><span class="muted">${metaBits.join(' &middot; ')}</span></span>`;
 const st = embedStatusMap.get(d.id);
 const actions = document.createElement('div');
 actions.style.display = 'flex';
