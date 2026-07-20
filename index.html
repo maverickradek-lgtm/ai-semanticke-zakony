@@ -328,7 +328,22 @@ display: none;
 
 </main>
 
-<footer>Neposkytujeme právní poradenství – jde o obecné informace z veřejných zdrojů. Vždy si ověřte aktuální znění u zdroje.</footer>
+<footer>Neposkytujeme právní poradenství – jde o obecné informace z veřejných zdrojů. Vždy si ověřte aktuální znění u zdroje. &middot; <a href="#" id="footer-contact-link">Kontakt</a></footer>
+
+<div id="contact-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--card-bg,#fff);border-radius:var(--radius);padding:24px;max-width:420px;width:100%;position:relative;">
+<button id="contact-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Kontaktujte nás</h3>
+<div class="muted" style="font-size:13px;margin-bottom:14px;">Napište nám dotaz nebo zpětnou vazbu k aplikaci ParagrAlf.</div>
+<input type="text" id="contact-name" placeholder="Jméno (nepovinné)" style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+<input type="email" id="contact-email" placeholder="Váš e-mail (pro odpověď, nepovinné)" style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+<textarea id="contact-message" placeholder="Vaše zpráva" rows="4" style="width:100%;margin-bottom:10px;box-sizing:border-box;"></textarea>
+<input type="checkbox" name="botcheck" id="contact-botcheck" style="display:none;" tabindex="-1" autocomplete="off">
+<button id="contact-submit-btn">Odeslat</button>
+<span id="contact-spinner" class="hidden muted">Odesílám…</span>
+<div id="contact-result" style="margin-top:10px;font-size:13px;"></div>
+</div>
+</div>
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -973,6 +988,61 @@ if (btnDocReview) {
     }
   });
 }
+
+(function(){
+  const modal = $('contact-modal');
+  const link = $('footer-contact-link');
+  const closeBtn = $('contact-modal-close');
+  if (!modal || !link) return;
+  link.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); $('contact-result').textContent=''; });
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+  $('contact-submit-btn').addEventListener('click', async () => {
+    const message = $('contact-message').value.trim();
+    const resultEl = $('contact-result');
+    resultEl.textContent = '';
+    resultEl.style.color = '';
+    if (!message) { resultEl.textContent = 'Napište prosím zprávu.'; resultEl.style.color = 'crimson'; return; }
+    if ($('contact-botcheck').checked) return;
+    const btn = $('contact-submit-btn');
+    btn.disabled = true;
+    $('contact-spinner').classList.remove('hidden');
+    try {
+      const payload = {
+        access_key: '68048717-0461-494d-8275-0d20134a9c68',
+        subject: 'Dotaz z webu ParagrAlf',
+        from_name: 'ParagrAlf - kontaktni formular',
+        name: $('contact-name').value.trim() || 'Neuvedeno',
+        message: message,
+      };
+      const emailVal = $('contact-email').value.trim();
+      if (emailVal) payload.email = emailVal;
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success) {
+        resultEl.textContent = 'Děkujeme, zpráva byla odeslána.';
+        resultEl.style.color = 'green';
+        $('contact-name').value = '';
+        $('contact-email').value = '';
+        $('contact-message').value = '';
+      } else {
+        resultEl.textContent = 'Odeslání se nepovedlo, zkuste to prosím znovu později.';
+        resultEl.style.color = 'crimson';
+      }
+    } catch (e) {
+      resultEl.textContent = 'Odeslání se nepovedlo, zkontrolujte připojení.';
+      resultEl.style.color = 'crimson';
+    } finally {
+      btn.disabled = false;
+      $('contact-spinner').classList.add('hidden');
+    }
+  });
+})();
+
 </script>
 
 </body></html>
