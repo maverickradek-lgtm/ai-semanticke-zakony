@@ -472,6 +472,8 @@ def archive_old_version(source_id, old_doc):
     if hist_chunk_rows:
         supabase_upsert("chunks", hist_chunk_rows, on_conflict="document_id,chunk_index")
 
+    return old_chunks
+
 def main():
     log("=== Sync e-Sbirka TEXT (faze A): start ===")
     source_id = get_or_create_source()
@@ -539,11 +541,15 @@ def main():
                    if "eli/cz" in version_iri else None)
 
         is_update = citace in existing_version_iris
+        old_chunks_by_key = {}
         if is_update:
             old_doc = fetch_current_document(source_id, citace)
             if old_doc:
-                archive_old_version(source_id, old_doc)
+                old_chunks = archive_old_version(source_id, old_doc)
                 archived += 1
+                for oc in (old_chunks or []):
+                    if oc.get("embedding") is not None:
+                        old_chunks_by_key[(oc.get("heading"), oc.get("content"))] = oc["embedding"]
 
         docs = supabase_upsert(
             "documents",
@@ -580,7 +586,7 @@ def main():
                 "chunk_index": idx,
                 "heading": node["citace"],
                 "content": content,
-                "embedding": None,
+                "embedding": old_chunks_by_key.get((node["citace"], content)),
             })
 
         if chunk_rows:
