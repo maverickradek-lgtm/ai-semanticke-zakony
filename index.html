@@ -598,9 +598,16 @@ return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"'
 
 function linkCitations(html) {
   return html.replace(/\[(W?\d+)\]/g, function(m, ref) {
-    return '<a href="#cite-' + ref + '" class="cite-ref" onclick="return scrollToCite(\'' + ref + '\')">[' + ref + ']</a>';
+    return '<a href="#cite-' + ref + '" class="cite-ref">[' + ref + ']</a>';
   });
 }
+document.addEventListener('click', function(e){
+  var a = e.target.closest('a.cite-ref');
+  if (!a) return;
+  e.preventDefault();
+  var ref = a.getAttribute('href').slice(6);
+  scrollToCite(ref);
+});
 function scrollToCite(ref) {
   var el = document.getElementById('cite-' + ref);
   if (!el) return false;
