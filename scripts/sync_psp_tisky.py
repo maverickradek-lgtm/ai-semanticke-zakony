@@ -146,7 +146,7 @@ def get_current_laws():
                 "select": "id,external_id,title,embed_priority",
                 "doc_type": "eq.zakon",
                 "is_current": "eq.true",
-                "order": "external_id.asc",
+                "order": "embed_priority.desc,external_id.asc",
             },
             timeout=60,
         )
