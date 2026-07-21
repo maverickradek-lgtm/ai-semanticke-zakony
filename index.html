@@ -217,6 +217,14 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRo46
 
 <div class="card">
 <h2>Dotaz</h2>
+<div class="topic-chips" id="topic-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px">
+<button type="button" class="chip topic-chip" data-topic="Jaká je výpovědní doba u nájmu bytu?">Výpovědní doba u nájmu</button>
+<button type="button" class="chip topic-chip" data-topic="Jak postupovat při reklamaci vadného zboží?">Reklamace zboží</button>
+<button type="button" class="chip topic-chip" data-topic="Jak probíhá rozvod a vypořádání společného jmění manželů?">Rozvod a vypořádání jmění</button>
+<button type="button" class="chip topic-chip" data-topic="Jaká je náhrada škody při pracovním úrazu?">Pracovní úraz</button>
+<button type="button" class="chip topic-chip" data-topic="Jak probíhá dědictví ze zákona?">Dědictví ze zákona</button>
+</div>
+
 <div class="input-wrap" style="margin-bottom:14px;">
 <input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
 <span class="input-clear-btn" id="query-clear-btn" title="Smazat text">&times;</span>
@@ -1113,6 +1121,19 @@ const sources = result.sources || [];
   });
 })();
 
+(function(){
+  const wrap = document.getElementById('topic-chips');
+  if (!wrap) return;
+  wrap.addEventListener('click', function(e){
+    const btn = e.target.closest('.topic-chip');
+    if (!btn) return;
+    const input = document.getElementById('query-input');
+    if (!input) return;
+    input.value = btn.dataset.topic || btn.textContent;
+    const askBtn = document.getElementById('btn-ask');
+    if (askBtn) askBtn.click();
+  });
+})();
 </script>
 
 </body></html>
