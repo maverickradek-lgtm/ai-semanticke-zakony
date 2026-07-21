@@ -23,14 +23,15 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL_NS }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_NS }}
-          # 2026-07-21: presunuto na vlastni vyhrazeny klic (novy,
-          # samostatny Google ucet - viz project_identifiers v pameti).
-          # Predtim tento job sdilel GEMINI_API_KEY_UOHS s embed_uohs a
-          # musel se spokojit jen se zbytkovou denni kvotou toho uctu
-          # (rozpocet drzeny nizko na 300/den, viz historie souboru).
-          # S vlastnim uctem uz neni duvod byt konzervativni - NS+NSS
-          # dohromady maji jen ~5.6k nezaembedovanych chunku, takze i
-          # tento vyssi rozpocet je casem dobehne za pár dni, ne tydnu.
+          # 2026-07-21: vlastni vyhrazeny klic (novy, samostatny Google
+          # ucet/projekt - viz project_identifiers v pameti). Gemini
+          # Embedding free tier limit je oficialne 1000 RPD / 100 RPM
+          # PER PROJECT (potvrzeno na ai.google.dev/gemini-api/docs/rate-limits:
+          # "Rate limits are applied per project, not per API key") - tedy
+          # ne "na cely Google ucet", jak jsme si drive mysleli, ale na
+          # konkretni Google Cloud projekt, ktery za danym klicem stoji.
+          # Rozpocet 900 necha malou rezervu pod realnym stropem 1000, aby
+          # job skoncil cistě pred prvnim 429, ne az po nem.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_NS }}
-          DAILY_EMBED_BUDGET: "2000"
+          DAILY_EMBED_BUDGET: "900"
         run: python scripts/sync_sbirka_ns_embed.py
