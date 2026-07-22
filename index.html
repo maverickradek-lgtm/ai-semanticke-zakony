@@ -255,6 +255,11 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <h2>Odpověď</h2>
 <div class="answer" id="answer-text"></div>
 <div class="sources" id="answer-sources"></div>
+<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+  <button id="explain-simply-btn" type="button">Přeložit do lidštiny</button>
+  <span class="muted" style="font-size:0.85em;margin-left:8px">Spotřebuje 1 dotaz navíc z vašeho denního limitu Gemini.</span>
+  <div id="explain-simply-result"></div>
+</div>
 </div>
 
 <section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
@@ -313,15 +318,25 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <input type="hidden" id="db-type-filter" value="">
 <button id="btn-db-search" class="secondary">Hledat</button>
 </div>
+<div class="row" style="margin-top:14px;flex-wrap:wrap;align-items:center;gap:6px;">
+<button id="btn-db-first-top" class="db-pager-first secondary small">&laquo; Začátek</button>
+<button id="btn-db-prev-top" class="db-pager-prev secondary small">Předchozí</button>
+<span id="db-page-numbers-top" class="db-pager-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
+<button id="btn-db-next-top" class="db-pager-next secondary small">Další</button>
+<button id="btn-db-last-top" class="db-pager-last secondary small">Konec &raquo;</button>
+<span style="display:inline-flex;align-items:center;gap:4px;margin-left:6px"><input type="number" min="1" class="db-pager-goto-input" style="width:64px" placeholder="Str."><button type="button" class="secondary small db-pager-goto-btn">Přejít na str.</button></span>
+</div>
+<div id="db-page-info-top" class="db-pager-info muted" style="margin-top:6px;"></div>
 <div id="db-list" class="muted">Načítám…</div>
 <div class="row" style="margin-top:14px;flex-wrap:wrap;align-items:center;gap:6px;">
-<button id="btn-db-first" class="secondary small">&laquo; Začátek</button>
-<button id="btn-db-prev" class="secondary small">Předchozí</button>
-<span id="db-page-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
-<button id="btn-db-next" class="secondary small">Další</button>
-<button id="btn-db-last" class="secondary small">Konec &raquo;</button>
+<button id="btn-db-first" class="db-pager-first secondary small">&laquo; Začátek</button>
+<button id="btn-db-prev" class="db-pager-prev secondary small">Předchozí</button>
+<span id="db-page-numbers" class="db-pager-numbers" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
+<button id="btn-db-next" class="db-pager-next secondary small">Další</button>
+<button id="btn-db-last" class="db-pager-last secondary small">Konec &raquo;</button>
+<span style="display:inline-flex;align-items:center;gap:4px;margin-left:6px"><input type="number" min="1" class="db-pager-goto-input" style="width:64px" placeholder="Str."><button type="button" class="secondary small db-pager-goto-btn">Přejít na str.</button></span>
 </div>
-<div id="db-page-info" class="muted" style="margin-top:6px;"></div>
+<div id="db-page-info" class="db-pager-info muted" style="margin-top:6px;"></div>
 </div>
 </div><!-- /database-view -->
 
@@ -365,7 +380,16 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="key-msg" class="ok-msg hidden"></div>
 </div>
 
-</div><!-- /settings-view -->
+</div><div class="card">
+<h2>Chybí vám předpis?</h2>
+<p class="muted">Pokud v databázi chybí konkrétní zákon, vyhláška nebo jiný předpis, napište sem jeho číslo nebo označení (např. "141/1961 Sb."). Zkusíme ho při dalším běhu dohledat a nahrát, nad rámec běžné automatické aktualizace.</p>
+<input type="text" id="predpis-request-input" placeholder="Např. 141/1961 Sb.">
+<button id="btn-predpis-request">Odeslat žádost</button>
+<div id="predpis-request-msg" class="ok-msg hidden"></div>
+<div id="predpis-request-list" class="muted" style="margin-top:14px;font-size:0.9em"></div>
+</div>
+
+<!-- /settings-view -->
 
 
 
@@ -460,6 +484,7 @@ function showView(view) {
 hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view'));
 if (view === 'settings') {
 show($('settings-view'));
+loadPredpisRequests();
 } else if (view === 'admin') {
 show($('admin-view'));
 loadAdminList();
@@ -598,6 +623,57 @@ show($('key-msg'));
 }
 };
 
+async function loadPredpisRequests() {
+  const listEl = document.getElementById('predpis-request-list');
+  if (!listEl) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data, error } = await supabase
+    .from('predpis_requests')
+    .select('id,query_text,status,requested_at,note')
+    .eq('user_id', user.id)
+    .order('requested_at', { ascending: false })
+    .limit(20);
+  if (error || !data || data.length === 0) { listEl.innerHTML = ''; return; }
+  const statusLabel = { pending: 'čeká na zpracování', fetched: 'nalezeno a nahráno', not_found: 'nenalezeno', error: 'chyba při zpracování' };
+  listEl.innerHTML = '<strong>Vaše dosavadní žádosti:</strong><br>' + data.map(r => {
+    const d = new Date(r.requested_at).toLocaleDateString('cs-CZ');
+    return escapeHtml(r.query_text) + ' — ' + (statusLabel[r.status] || r.status) + ' (' + d + ')';
+  }).join('<br>');
+}
+
+const predpisReqBtn = document.getElementById('btn-predpis-request');
+if (predpisReqBtn) {
+  predpisReqBtn.onclick = async () => {
+    const input = document.getElementById('predpis-request-input');
+    const msg = document.getElementById('predpis-request-msg');
+    const val = input ? input.value.trim() : '';
+    if (!val) return;
+    if (msg) { hide(msg); }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nejste přihlášeni.');
+      const { error } = await supabase.from('predpis_requests').insert({ user_id: user.id, query_text: val });
+      if (error) throw error;
+      if (input) input.value = '';
+      if (msg) {
+        msg.textContent = 'Žádost odeslána, zkusíme předpis dohledat při dalším běhu.';
+        msg.classList.remove('error');
+        msg.classList.add('ok-msg');
+        show(msg);
+      }
+      loadPredpisRequests();
+    } catch (e) {
+      if (msg) {
+        msg.textContent = 'Chyba: ' + e.message;
+        msg.classList.remove('ok-msg');
+        msg.classList.add('error');
+        show(msg);
+      }
+    }
+  };
+}
+
 function escapeHtml(s) {
 return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -678,6 +754,12 @@ $('answer-sources').innerHTML = allSources.length
 ? allSources.map(sourceRow).join('')
 : '<div class="source-item">Žádné zdroje z databáze ani z webu k tomuto dotazu.</div>';
 show($('answer-card'));
+window.__lastAnswerText = result.answer || '';
+window.__lastQuery = query;
+const esBtn0 = document.getElementById('explain-simply-btn');
+const esResult0 = document.getElementById('explain-simply-result');
+if (esBtn0) { esBtn0.disabled = false; esBtn0.textContent = 'Přeložit do lidštiny'; }
+if (esResult0) esResult0.innerHTML = '';
 } catch (e) {
 $('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
 show($('ask-error'));
@@ -704,6 +786,25 @@ if (onClear) onClear();
 });
 }
 setupClearButton('query-input', 'query-clear-btn');
+const explainBtn = document.getElementById('explain-simply-btn');
+if (explainBtn) {
+  explainBtn.onclick = async () => {
+    const resultDiv = document.getElementById('explain-simply-result');
+    if (!window.__lastAnswerText) return;
+    explainBtn.disabled = true;
+    explainBtn.textContent = 'Překládám...';
+    if (resultDiv) resultDiv.innerHTML = '';
+    try {
+      const r = await callFn('explain-simply', { answer_text: window.__lastAnswerText, query: window.__lastQuery || '' });
+      if (resultDiv) resultDiv.innerHTML = '<div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.04)">' + renderAnswer(r.simplified || '') + '</div>';
+    } catch (e) {
+      if (resultDiv) resultDiv.innerHTML = '<div class="error" style="margin-top:10px">Chyba: ' + escapeHtml(e.message || String(e)) + '</div>';
+    } finally {
+      explainBtn.disabled = false;
+      explainBtn.textContent = 'Přeložit do lidštiny';
+    }
+  };
+}
 setupClearButton('db-search', 'db-search-clear-btn', () => loadDatabaseList(0));
 
 async function loadAdminList() {
@@ -911,12 +1012,12 @@ list.appendChild(row);
 });
 const totalPages = Math.max(1, Math.ceil((count || 0) / DB_PAGE_SIZE));
 dbTotalPages = totalPages;
-$('db-page-info').textContent = `Strana ${page + 1} / ${totalPages}`;
-$('btn-db-prev').disabled = page === 0;
-$('btn-db-next').disabled = page + 1 >= totalPages;
-$('btn-db-first').disabled = page === 0;
-$('btn-db-last').disabled = page + 1 >= totalPages;
-const pageNumbers = $('db-page-numbers');
+document.querySelectorAll('.db-pager-info').forEach(el => { el.textContent = `Strana ${page + 1} / ${totalPages}`; });
+document.querySelectorAll('.db-pager-prev').forEach(el => { el.disabled = page === 0; });
+document.querySelectorAll('.db-pager-next').forEach(el => { el.disabled = page + 1 >= totalPages; });
+document.querySelectorAll('.db-pager-first').forEach(el => { el.disabled = page === 0; });
+document.querySelectorAll('.db-pager-last').forEach(el => { el.disabled = page + 1 >= totalPages; });
+document.querySelectorAll('.db-pager-numbers').forEach(pageNumbers => {
 pageNumbers.innerHTML = '';
 const startP = Math.max(0, page - 5);
 const endP = Math.min(totalPages - 1, page + 5);
@@ -927,14 +1028,26 @@ pBtn.textContent = String(p + 1);
 if (p === page) pBtn.disabled = true;
 pBtn.onclick = () => loadDatabaseList(p);
 pageNumbers.appendChild(pBtn);
-}
+}});
 }
 
 $('btn-db-search').onclick = () => loadDatabaseList(0);
-$('btn-db-first').onclick = () => loadDatabaseList(0);
-$('btn-db-last').onclick = () => loadDatabaseList(dbTotalPages - 1);
-$('btn-db-prev').onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); };
-$('btn-db-next').onclick = () => loadDatabaseList(dbPage + 1);
+document.querySelectorAll('.db-pager-first').forEach(el => { el.onclick = () => loadDatabaseList(0); });
+document.querySelectorAll('.db-pager-last').forEach(el => { el.onclick = () => loadDatabaseList(dbTotalPages - 1); });
+document.querySelectorAll('.db-pager-prev').forEach(el => { el.onclick = () => { if (dbPage > 0) loadDatabaseList(dbPage - 1); }; });
+document.querySelectorAll('.db-pager-next').forEach(el => { el.onclick = () => loadDatabaseList(dbPage + 1); });
+document.querySelectorAll('.db-pager-goto-btn').forEach(btn => {
+  const wrap = btn.parentElement;
+  const gotoInput = wrap ? wrap.querySelector('.db-pager-goto-input') : null;
+  const go = () => {
+    if (!gotoInput) return;
+    const n = parseInt(gotoInput.value, 10);
+    if (!n || n < 1) return;
+    loadDatabaseList(Math.min(n, dbTotalPages) - 1);
+  };
+  btn.onclick = go;
+  if (gotoInput) gotoInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+});
 
 $('db-search').addEventListener('keydown', (e) => {
 if (e.key === 'Enter') { e.preventDefault(); loadDatabaseList(0); }
