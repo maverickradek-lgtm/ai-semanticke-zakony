@@ -817,7 +817,7 @@ const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 let query = supabase
 .from('documents')
-.select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority', { count: 'exact' })
+.select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority,is_current', { count: 'exact' })
 .order('predpis_rok', { ascending: true, nullsFirst: false })
     .order('predpis_cislo', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
@@ -856,6 +856,17 @@ actions.style.display = 'flex';
 actions.style.alignItems = 'center';
 actions.style.gap = '8px';
 actions.style.flexShrink = '0';
+    if (d.is_current === false) {
+      const oldBadge = document.createElement('span');
+      oldBadge.style.fontSize = '0.85em';
+      oldBadge.style.padding = '2px 8px';
+      oldBadge.style.borderRadius = '10px';
+      oldBadge.style.whiteSpace = 'nowrap';
+      oldBadge.style.background = 'rgba(150,150,150,0.18)';
+      oldBadge.style.color = 'var(--muted)';
+      oldBadge.textContent = 'starší znění';
+      actions.appendChild(oldBadge);
+    }
 const badge = document.createElement('span');
 badge.style.fontSize = '0.85em';
 badge.style.padding = '2px 8px';
