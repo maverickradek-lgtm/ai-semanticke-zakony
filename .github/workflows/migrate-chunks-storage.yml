@@ -17,7 +17,7 @@ on:
         default: "15"
 
   schedule:
-    - cron: "30 3 * * *"
+    - cron: "0 5 * * *"
 
 concurrency:
   group: migrate-chunks-storage
