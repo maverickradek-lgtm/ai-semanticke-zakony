@@ -224,6 +224,19 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <div class="card">
 <h2>Dotaz</h2>
+<div class="doc-type-filter" id="query-type-filter" style="display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 14px;font-size:0.9em">
+<label style="display:inline-flex;align-items:center;gap:4px;font-weight:600"><input type="checkbox" class="qtf-all" checked> Vše</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="zakon" checked> Zákon</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="vyhlaska" checked> Vyhláška</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="narizeni" checked> Nařízení</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="opatreni" checked> Opatření</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="dekret" checked> Dekret</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="judikat" checked> Judikát</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="jiny_predpis" checked> Jiný předpis</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="rozhodnuti_uohs" checked> Rozhodnutí ÚOHS</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="duvodova_zprava" checked> Důvodová zpráva</label>
+</div>
+
 
 <div class="input-wrap" style="margin-bottom:14px;">
 <input type="text" id="query-input" placeholder="Např.: Jaká je výpovědní doba u nájmu bytu?">
@@ -657,7 +670,7 @@ const query = $('query-input').value.trim();
 if (!query) return;
 show($('ask-spinner'));
 try {
-const result = await callFn('ai-query', { query, use_web: $('web-toggle').checked, as_of_date: $('as-of-date').value || null });
+const result = await callFn('ai-query', { query, use_web: $('web-toggle').checked, as_of_date: $('as-of-date').value || null, doc_types: getSelectedDocTypes() });
 $('answer-text').innerHTML = (result.as_of_date ? '<div class="as-of-badge">Zobrazeno znění platné k datu ' + escapeHtml(result.as_of_date.split('-').reverse().join('.')) + ' (nikoli aktuální znění)</div>' : '') + (result.answer ? renderAnswer(result.answer) : '(prázdná odpověď)');
 if (result.degraded) { const _elDeg = document.getElementById('answer-text'); if (_elDeg) _elDeg.insertAdjacentHTML('afterbegin', '<div class="degraded-badge">⚠️ Záložní režim: vyhledávání nebo AI selhaly, výsledek nemusí být kompletní.</div>'); }
 const allSources = [...(result.sources || []), ...(result.web_sources || [])];
@@ -805,9 +818,14 @@ const typeFilter = $('db-type-filter').value;
 let query = supabase
 .from('documents')
 .select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority', { count: 'exact' })
-.order('created_at', { ascending: false })
+.order('predpis_rok', { ascending: true, nullsFirst: false })
+    .order('predpis_cislo', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
 .range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
-if (search) query = query.ilike('title', `%${search}%`);
+if (search) {
+      const safeSearch = search.replace(/[,()]/g, '');
+      query = query.or(`title.ilike.%${safeSearch}%,external_id.ilike.%${safeSearch}%`);
+    }
 if (typeFilter) query = query.eq('doc_type', typeFilter);
 const { data, error, count } = await query;
 if (error) { list.textContent = 'Chyba: ' + error.message; return; }
@@ -1128,6 +1146,28 @@ const sources = result.sources || [];
   });
 })();
 
+(function(){
+  const wrap = document.getElementById('query-type-filter');
+  if (!wrap) return;
+  const allCb = wrap.querySelector('.qtf-all');
+  const itemCbs = Array.from(wrap.querySelectorAll('.qtf-item'));
+  allCb.addEventListener('change', function(){
+    itemCbs.forEach(function(cb){ cb.checked = allCb.checked; });
+  });
+  itemCbs.forEach(function(cb){
+    cb.addEventListener('change', function(){
+      allCb.checked = itemCbs.every(function(c){ return c.checked; });
+    });
+  });
+})();
+function getSelectedDocTypes() {
+  const wrap = document.getElementById('query-type-filter');
+  if (!wrap) return null;
+  const itemCbs = Array.from(wrap.querySelectorAll('.qtf-item'));
+  const checked = itemCbs.filter(function(cb){ return cb.checked; }).map(function(cb){ return cb.value; });
+  if (checked.length === 0 || checked.length === itemCbs.length) return null;
+  return checked;
+}
 </script>
 
 </body></html>
