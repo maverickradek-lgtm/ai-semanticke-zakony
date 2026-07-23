@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: "0 4 * * *"
 
+concurrency:
+  group: db-heavy-secondary
+  cancel-in-progress: false
+
 jobs:
   embed_sbirka_ns:
     runs-on: ubuntu-latest
