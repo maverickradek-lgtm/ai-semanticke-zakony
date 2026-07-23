@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: "0 3 * * *"
 
+concurrency:
+  group: db-heavy-primary
+  cancel-in-progress: false
+
 jobs:
   embed:
     runs-on: ubuntu-latest
