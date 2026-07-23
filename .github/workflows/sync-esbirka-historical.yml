@@ -12,6 +12,10 @@ on:
   schedule:
     - cron: "30 5 * * *"
 
+concurrency:
+  group: db-heavy-primary
+  cancel-in-progress: false
+
 jobs:
   import_historical:
     runs-on: ubuntu-latest
