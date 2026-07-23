@@ -20,7 +20,7 @@ on:
     - cron: "0 5 * * *"
 
 concurrency:
-  group: migrate-chunks-storage
+  group: db-heavy-primary
   cancel-in-progress: false
 
 jobs:
