@@ -164,6 +164,10 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <input type="email" id="auth-email" placeholder="vas@email.cz">
 <label>Heslo</label>
 <input type="password" id="auth-password" placeholder="••••••••">
+<div class="toggle-row" style="align-items:flex-start;">
+<input type="checkbox" id="consent-checkbox" />
+<label for="consent-checkbox" style="margin:0; font-size:13px; color:var(--muted);">Souhlasím se zpracováním mých osobních údajů dle <a class="link-btn" id="open-privacy-link">Zásad ochrany osobních údajů</a> (nutné jen pro založení nového účtu).</label>
+</div>
 <div class="row">
 <button id="btn-signin">Přihlásit se</button>
 <button class="secondary" id="btn-signup">Vytvořit účet</button>
@@ -264,7 +268,8 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
 <h2 style="margin-bottom:6px;">Posouzení dokumentu <span class="muted" style="font-size:13px;font-weight:400;">(beta)</span></h2>
-<div class="doc-disclaimer">Toto je obecné vysvětlení dokumentu s odkazy na související zákony a judikaturu z naší databáze – <strong>ne právní posouzení ani závazné stanovisko</strong>. Všechny extrahované údaje (data, lhůty, čísla jednací) si vždy ověřte přímo v originálním dokumentu. Pro cokoliv s právními důsledky se poraďte s odborníkem.</div>
+<div class="doc-disclaimer">Toto je obecné vysvětlení dokumentu s odkazy na související zákony a judikaturu z naší databáze – <strong>ne právní posouzení ani závazné stanovisko</strong>. Všechny extrahované údaje (data, lhůty, čísla jednací) si vždy ověřte přímo v originálním dokumentu. Pro cokoliv s právními důsledky se poraďte s odborníkem.</div><div class="doc-disclaimer" style="margin-top:8px;">Dokument se odešle přes API vaším Gemini klíčem na servery Google – ty jej krátce logují kvůli prevenci zneužití, ale u uživatelů z EU jej dle aktuálních podmínek Google nepoužívají k trénování AI modelů. <strong>ParagrAlf obsah dokumentu ani informace o něm neukládá</strong> – po vygenerování odpovědi ho zahazujeme. Nenahrávejte prosím vysoce citlivé osobní údaje, pokud to není nezbytné. Více v <a class="link-btn" id="open-privacy-link-docreview">Zásadách ochrany osobních údajů</a>.</div>
+
 <div id="doc-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:10px;cursor:pointer;transition:border-color .15s;">
 <div class="muted" id="doc-dropzone-text">Přetáhněte soubor sem, nebo klikněte pro výběr</div>
 <input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain" style="display:none;">
@@ -397,7 +402,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 </main>
 
-<footer>Neposkytujeme právní poradenství – jde o obecné informace z veřejných zdrojů. Vždy si ověřte aktuální znění u zdroje. &middot; <a href="#" id="footer-contact-link">Kontakt</a></footer>
+<footer>Neposkytujeme právní poradenství – jde o obecné informace z veřejných zdrojů. Vždy si ověřte aktuální znění u zdroje. &middot; <a href="#" id="footer-contact-link">Kontakt</a> · <a class="link-btn" id="open-privacy-link-footer">Zásady ochrany osobních údajů</a></footer>
 
 <div id="contact-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
 <div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:420px;width:100%;position:relative;">
@@ -414,6 +419,21 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 </div>
 </div>
 
+<div id="privacy-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:560px;width:100%;position:relative;max-height:80vh;overflow-y:auto;">
+<button id="privacy-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Zásady ochrany osobních údajů a zpracování dat</h3>
+<div style="font-size:13.5px; line-height:1.6;">
+<p><strong>Kdo appku provozuje:</strong> ParagrAlf je nekomerční aplikace dostupná jen na pozvání. Provozovatel: Radek. Kontakt přes odkaz „Kontakt" v patičce appky.</p>
+<p><strong>Jaké údaje o vás ukládáme:</strong> e-mail a heslo (heslo spravuje Supabase Auth, v čitelné podobě ho nevidíme), volitelně jméno, příjmení a telefon, a váš vlastní Google Gemini API klíč – ten je uložen šifrovaně, nikdo včetně nás ho nevidí v čitelné podobě. Dále ukládáme základní záznam používání appky (kdy a kolikrát jste appku použili) kvůli provozu a ochraně před zneužitím.</p>
+<p><strong>Co se děje s vaším dotazem nebo nahraným dokumentem:</strong> odešle se přes API vaším vlastním Gemini klíčem na servery Google, aby AI vygenerovala odpověď. Podle aktuálních podmínek Google (stav červenec 2026) Google u uživatelů z EU tento obsah nepoužívá k trénování svých AI modelů – krátce ho ale loguje kvůli prevenci zneužití a jinak se řídí vlastními zásadami ochrany soukromí Google, ne našimi. <strong>ParagrAlf samotný obsah nahraného dokumentu ani informace o jeho obsahu neukládá</strong> – po vygenerování odpovědi se zahazuje, u nás zůstává jen záznam, že jste funkci použili, ne co bylo v dokumentu. Doporučujeme nenahrávat vysoce citlivé osobní údaje (rodná čísla, zdravotní údaje apod.), pokud to není nezbytné.</p>
+<p><strong>Co neděláme:</strong> vaše údaje neprodáváme ani nepředáváme třetím stranám – mimo Google coby poskytovatele AI (na základě vašeho vlastního klíče) a technické infrastruktury appky (Supabase pro databázi, Netlify pro hosting appky, Tavily pro volitelné hledání na webu).</p>
+<p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava, výmaz i přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky.</p>
+<p><strong>Cookies:</strong> nepoužíváme sledovací cookies třetích stran, jen technickou přihlašovací session appky uloženou lokálně ve vašem prohlížeči.</p>
+<p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
+</div>
+</div>
+</div>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -581,10 +601,26 @@ if (error) { $('auth-error').textContent = error.message; show($('auth-error'));
 await loadProfile();
 };
 
+(function(){
+  const modal = $('privacy-modal');
+  const closeBtn = $('privacy-modal-close');
+  if (!modal || !closeBtn) return;
+  ['open-privacy-link','open-privacy-link-footer','open-privacy-link-docreview'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
+  });
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+})();
 $('btn-signup').onclick = async () => {
 hide($('auth-error')); hide($('auth-ok'));
 const email = $('auth-email').value.trim();
 const password = $('auth-password').value;
+    if (!$('consent-checkbox').checked) {
+      $('auth-error').textContent = 'Pro založení účtu je nutné odsouhlasit zpracování osobních údajů.';
+      show($('auth-error'));
+      return;
+    }
 if (password.length < 6) {
 $('auth-error').textContent = 'Heslo musí mít alespoň 6 znaků.';
 show($('auth-error'));
