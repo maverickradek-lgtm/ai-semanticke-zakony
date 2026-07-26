@@ -477,6 +477,25 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 </div>
 </div>
 </div>
+<div id="guide-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:600px;width:100%;position:relative;max-height:82vh;overflow-y:auto;">
+<button id="guide-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Návod k použití ParagrAlf</h3>
+<div style="font-size:13.5px; line-height:1.65;">
+<p><strong>1. Chatrádce Alf – hlavní dotazování</strong><br>
+Do pole napište svůj dotaz (např. „Jaká je výpovědní doba u nájmu bytu?") a appka najde relevantní úseky zákonů a judikatury a shrne odpověď i s odkazy na konkrétní zdroje (čísla v hranatých závorkách jako [1] jsou klikatelná). Zaškrtnutím „Hledat i na webu" appka navíc zkusí dohledat souvislosti mimo naši databázi. U odpovědi je i tlačítko „vysvětlit lidsky" pro jednodušší přeformulování.</p>
+<p><strong>2. Posouzení dokumentu</strong><br>
+Nahrajte PDF nebo TXT (např. smlouvu, předvolání, rozhodnutí) a appka vám vysvětlí, o co jde, a dohledá související předpisy a judikaturu. Nejde o právní posouzení ani závazné stanovisko – u dat a lhůt si vždy ověřte originál. Dokument se zpracovává přes váš Gemini klíč na serverech Google; podrobnosti (co se s dokumentem děje a co appka neukládá) najdete v Zásadách ochrany osobních údajů.</p>
+<p><strong>3. Databáze</strong><br>
+Přehled všech zákonů, vyhlášek a judikatury v appce – lze hledat podle názvu i čísla předpisu a řadit podle roku/čísla. Odznak u každého předpisu ukazuje, jestli je už zpracovaný k vyhledávání. Odkaz „O databázi" vysvětluje, co appka jako celek pokrývá a kde jsou známé mezery (např. judikatura Ústavního soudu zatím není napojena). Pokud vám konkrétní předpis chybí, napište jeho číslo do pole „Chybí vám předpis?" – zkusíme ho při dalším běhu dohledat, bez záruky.</p>
+<p><strong>4. Nastavení</strong><br>
+Appka běží zdarma, ale potřebuje váš vlastní Google Gemini API klíč (odkaz „Návod jak klíč získat" vás provede krok za krokem – je to zdarma, bez platební karty). Tady také upravíte jméno/telefon, e-mail, a pokud budete chtít, můžete si tu kdykoliv trvale smazat účet i všechna svá data.</p>
+<p><strong>5. Schválení účtu</strong><br>
+Nový účet nejdřív čeká na schválení správcem appky – mezitím máte k dispozici omezený počet zkušebních dotazů. Po schválení se appka odemkne naplno.</p>
+<p class="muted" style="font-size:12px;">Něco nefunguje nebo máte nápad na vylepšení? Napište přes odkaz „Kontakt" v patičce appky.</p>
+</div>
+</div>
+</div>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -525,6 +544,7 @@ if (session) {
 actions.innerHTML = approved
 ? `<div class="row">
 <button class="secondary small" id="btn-nav-dashboard">Chatrádce Alf</button>
+           <button class="secondary small" id="btn-nav-guide">Návod</button>
 <button class="secondary small" id="btn-nav-database">Databáze</button>
 <button class="secondary small" id="btn-nav-settings">Nastavení</button>
 ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
@@ -534,6 +554,7 @@ ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</bu
 $('btn-logout-top').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 if (approved) {
 $('btn-nav-dashboard').onclick = () => showView('dashboard');
+    $('btn-nav-guide').onclick = () => show($('guide-modal'));
 $('btn-nav-settings').onclick = () => showView('settings');
 if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
 $('btn-nav-database').onclick = () => showView('database');
@@ -686,6 +707,13 @@ await loadProfile();
     const el = $(id);
     if (el) el.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
   });
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+})();
+(function(){
+  const modal = $('guide-modal');
+  const closeBtn = $('guide-modal-close');
+  if (!modal || !closeBtn) return;
   closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 })();
