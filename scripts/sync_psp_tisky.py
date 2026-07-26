@@ -34,6 +34,7 @@ MAX_ITEMS omezuje pocet NOVE zpracovanych zakonu za jeden beh (kazdy stoji
 import os
 import re
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 from pypdf import PdfReader
@@ -50,6 +51,16 @@ MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "30"))
 # Actions by nestihl zpracovat ani jeden MAX_ITEMS uspech. MAX_ATTEMPTS
 # omezuje celkovy pocet PROVERENYCH zakonu (uspesnych i neuspesnych) za beh.
 MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "250"))
+
+# Kolik dni si pamatujeme neuspesny pokus (not_found/error), nez ho
+# zkusime znovu - brani tomu, aby se ten stejny "nenalezitelny" zakon
+# zkousel uplne kazdy den a MAX_ATTEMPTS se tak porad utracel na to same,
+# misto aby se posunul k novym, jeste neproverenym zakonum.
+RECHECK_AFTER_DAYS = int(os.environ.get("RECHECK_AFTER_DAYS", "30"))
+
+# Tvrdy strop na celkovy cas behu (v sekundach), aby skript vzdy skoncil
+# cistě sam, misto aby ho zabil az GitHub Actions 60min timeout.
+TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "2700"))
 MAX_CHARS_PER_CHUNK = 1500
 # Ochrana proti extremne velkym zakonikum (napr. obcansky zakonik ma
 # duvodovou zpravu pres 1.5 mil. znaku, tj. ~1000 useku) - to by samo
@@ -172,6 +183,36 @@ def get_existing_explains_ids():
     return {row["explains_document_id"] for row in r.json() if row.get("explains_document_id")}
 
 
+def get_recently_checked_ids():
+    """id zakonu, ktere jsme si nedavno (RECHECK_AFTER_DAYS) overili bez uspechu
+    (not_found/error) - preskakuji se, aby se kazdy den nezkousel porad ten
+    stejny uvaznuty zbytek a MAX_ATTEMPTS se utratil na neco noveho."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=RECHECK_AFTER_DAYS)).isoformat()
+    r = SESSION.get(
+        f"{SUPABASE_URL}/rest/v1/psp_dz_check_log",
+        headers=sb_headers(),
+        params={"select": "document_id", "checked_at": f"gte.{cutoff}", "result": "in.(not_found,error)"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return {row["document_id"] for row in r.json()}
+
+
+def mark_checked(document_id, result):
+    """Zapise/aktualizuje vysledek overeni do psp_dz_check_log (upsert). Zapis
+    neni kriticky - pri chybe se jen tise preskoci, nechceme kvuli tomu
+    shodit cely beh."""
+    try:
+        SESSION.post(
+            f"{SUPABASE_URL}/rest/v1/psp_dz_check_log",
+            headers={**sb_headers(), "Prefer": "resolution=merge-duplicates"},
+            json={"document_id": document_id, "result": result, "checked_at": datetime.now(timezone.utc).isoformat()},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException:
+        pass
+
+
 def find_historie_link(cislo, rok):
     r = psp_get(SBIRKA_URL, params={"cz": cislo, "r": rok})
     if not r.ok:
@@ -286,6 +327,7 @@ def save_duvodova_zprava(source_id, law, citace, tiskt_url, text):
 
 
 def main():
+    start_time = time.time()
     log("=== Duvodove zpravy (psp.cz): start ===")
     log(f"MAX_ITEMS={MAX_ITEMS}")
     source_id = get_or_create_source()
@@ -293,6 +335,9 @@ def main():
     log("Nacitam existujici vazby...")
     existing = get_existing_explains_ids()
     log(f"Jiz propojenych zakonu: {len(existing)}")
+
+    recently_checked = get_recently_checked_ids()
+    log(f"Nedavno bez uspechu overenych (preskakuji): {len(recently_checked)}")
 
     log("Nacitam seznam aktualne platnych zakonu...")
     laws = get_current_laws()
@@ -305,7 +350,12 @@ def main():
     for law in laws:
         if processed >= MAX_ITEMS or attempted >= MAX_ATTEMPTS:
             break
+        if time.time() - start_time > TIME_BUDGET_SECONDS:
+            log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan, koncim cistě.")
+            break
         if law["id"] in existing:
+            continue
+        if law["id"] in recently_checked:
             continue
         m = CITACE_RE.match(law["external_id"] or "")
         if not m:
@@ -317,34 +367,40 @@ def main():
             hist = find_historie_link(cislo, rok)
             if not hist:
                 not_found += 1
+                mark_checked(law["id"], "not_found")
                 continue
             o, t = hist
             idd = find_pdf_idd(o, t)
             if not idd:
                 not_found += 1
+                mark_checked(law["id"], "not_found")
                 continue
             tiskt_url = f"{TISKT_URL}?o={o}&ct={t}&ct1=0"
             pdf_r = psp_get(PDF_URL, params={"idd": idd, "pdf": "1"}, timeout=90, retries=0)
             if not pdf_r.ok:
                 not_found += 1
+                mark_checked(law["id"], "not_found")
                 continue
             text = extract_duvodova_zprava(pdf_r.content)
             if not text or len(text) < 200:
                 log(f"   {citace}: duvodova zprava nenalezena / prazdna v PDF, preskakuji")
                 not_found += 1
+                mark_checked(law["id"], "not_found")
                 continue
             if len(text) > MAX_CHARS_TOTAL:
                 log(f"   {citace}: text ma {len(text)} znaku, oriznuto na {MAX_CHARS_TOTAL}")
                 text = text[:MAX_CHARS_TOTAL]
             saved = save_duvodova_zprava(source_id, law, citace, tiskt_url, text)
             processed += 1
+            mark_checked(law["id"], "found")
             log(f"   {citace}: ulozeno {saved} useku (tisk {t}/{o})")
         except Exception as e:
             errors += 1
+            mark_checked(law["id"], "error")
             log(f"   {citace}: chyba - {e}")
         time.sleep(1)  # slusne tempo dotazu vuci psp.cz
 
-    log(f"=== Hotovo: proverenych {attempted}, zpracovano {processed}, nenalezeno {not_found}, chyb {errors} ===")
+    log(f"=== Hotovo: proverenych {attempted}, zpracovano {processed}, nenalezeno {not_found}, chyb {errors}, cas {time.time()-start_time:.0f}s ===")
 
 
 if __name__ == "__main__":
