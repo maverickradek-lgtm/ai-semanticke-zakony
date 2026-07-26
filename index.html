@@ -263,9 +263,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
   <button id="explain-simply-btn" type="button">Přeložit do lidštiny</button>
   <span class="muted" style="font-size:0.85em;margin-left:8px">Spotřebuje 1 dotaz navíc z vašeho denního limitu Gemini.</span>
-  <div id="explain-simply-result"></div>
-</div>
-</div>
+  <div id="explain-simply-result"></div></div><div id="followup-thread"></div><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><label for="followup-input" style="display:block;margin-bottom:6px;font-weight:600">Doplňkový dotaz k této odpovědi</label><input type="text" id="followup-input" placeholder="Napište doplňující otázku..."><button id="btn-followup-ask" type="button">Zeptat se</button><div id="followup-error" class="error hidden"></div><div id="followup-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div></div></div>
 
 <section id="doc-review-section" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border);">
 <h2 style="margin-bottom:6px;">Posouzení dokumentu <span class="muted" style="font-size:13px;font-weight:400;">(beta)</span></h2>
@@ -282,8 +280,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="doc-answer-card" class="hidden" style="margin-top:18px;">
 <div id="doc-answer-text"></div>
 <h3 style="margin-top:18px;font-size:15px;">Související zdroje</h3>
-<div id="doc-answer-sources"></div>
-</div>
+<div id="doc-answer-sources"></div><div id="doc-followup-thread"></div><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><label for="doc-followup-input" style="display:block;margin-bottom:6px;font-weight:600">Doplňkový dotaz k dokumentu</label><input type="text" id="doc-followup-input" placeholder="Napište doplňující otázku k dokumentu..."><button id="btn-doc-followup-ask" type="button">Zeptat se</button><div id="doc-followup-error" class="error hidden"></div><div id="doc-followup-spinner" class="spinner hidden">Hledám a připravuji odpověď…</div></div></div>
 </section>
 </div><!-- /dashboard-view -->
 
@@ -883,6 +880,10 @@ return safeUrl
 
 $('btn-ask').onclick = async () => {
 hide($('ask-error')); hide($('answer-card'));
+window.__chatHistory = [];
+const ftEl0 = document.getElementById('followup-thread'); if (ftEl0) ftEl0.innerHTML = '';
+const fuInput0 = document.getElementById('followup-input'); if (fuInput0) fuInput0.value = '';
+hide($('followup-error'));
 const query = $('query-input').value.trim();
 if (!query) return;
 show($('ask-spinner'));
@@ -901,6 +902,7 @@ const esBtn0 = document.getElementById('explain-simply-btn');
 const esResult0 = document.getElementById('explain-simply-result');
 if (esBtn0) { esBtn0.disabled = false; esBtn0.textContent = 'Přeložit do lidštiny'; }
 if (esResult0) esResult0.innerHTML = '';
+window.__chatHistory = [{ question: query, answer: (result.answer || '') }];
 } catch (e) {
 $('ask-error').textContent = 'Chyba: ' + e.message + (e.detail ? ' – ' + e.detail : '');
 show($('ask-error'));
@@ -927,6 +929,48 @@ if (onClear) onClear();
 });
 }
 setupClearButton('query-input', 'query-clear-btn');
+
+const btnFollowupAsk = document.getElementById('btn-followup-ask');
+const followupInputEl = document.getElementById('followup-input');
+if (btnFollowupAsk) {
+  btnFollowupAsk.onclick = async () => {
+    hide($('followup-error'));
+    const fq = (followupInputEl.value || '').trim();
+    if (!fq) return;
+    if (!window.__lastQuery) return;
+    show($('followup-spinner'));
+    btnFollowupAsk.disabled = true;
+    try {
+      const result = await callFn('ai-query', { query: fq, use_web: $('web-toggle').checked, as_of_date: $('as-of-date').value || null, doc_types: getSelectedDocTypes(), history: (window.__chatHistory || []) });
+      const thread = document.getElementById('followup-thread');
+      if (thread) {
+        const allSources = [...(result.sources || []), ...(result.web_sources || [])];
+        const block = document.createElement('div');
+        block.style.marginTop = '14px';
+        block.style.paddingTop = '14px';
+        block.style.borderTop = '1px solid var(--border)';
+        block.innerHTML = '<div style="font-weight:600;margin-bottom:6px">Dotaz: ' + escapeHtml(fq) + '</div>'
+          + '<div class="answer">' + renderAnswer(result.answer || '(prázdná odpověď)') + '</div>'
+          + (result.degraded ? '<div class="degraded-badge">Záložní režim - vyhledávání nebo AI selhaly, výsledek nemusí být kompletní</div>' : '')
+          + '<div class="sources">' + (allSources.length ? allSources.map(sourceRow).join('') : '') + '</div>';
+        thread.appendChild(block);
+      }
+      window.__chatHistory = [...(window.__chatHistory || []), { question: fq, answer: (result.answer || '') }];
+      window.__lastAnswerText = result.answer || '';
+      window.__lastQuery = fq;
+      followupInputEl.value = '';
+    } catch (e) {
+      $('followup-error').textContent = 'Chyba: ' + (e.message || String(e)) + (e.detail ? (' ' + e.detail) : '');
+      show($('followup-error'));
+    } finally {
+      hide($('followup-spinner'));
+      btnFollowupAsk.disabled = false;
+    }
+  };
+}
+if (followupInputEl) {
+  followupInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); btnFollowupAsk.click(); } });
+}
 const explainBtn = document.getElementById('explain-simply-btn');
 if (explainBtn) {
   explainBtn.onclick = async () => {
@@ -1316,6 +1360,10 @@ if (btnDocReview) {
   btnDocReview.addEventListener('click', async () => {
     document.getElementById('doc-error').classList.add('hidden');
     document.getElementById('doc-answer-card').classList.add('hidden');
+window.__docChatHistory = []; window.__lastDocFile = null;
+const dftEl0 = document.getElementById('doc-followup-thread'); if (dftEl0) dftEl0.innerHTML = '';
+const dfInput0 = document.getElementById('doc-followup-input'); if (dfInput0) dfInput0.value = '';
+hide($('doc-followup-error'));
     const fileInput = document.getElementById('doc-file-input');
     const errBox = document.getElementById('doc-error');
     const file = fileInput.files[0];
@@ -1347,6 +1395,8 @@ const sources = result.sources || [];
           }).join('')
         : '<div class="source-item">Žádné související zdroje nebyly v databázi nalezeny.</div>';
       document.getElementById('doc-answer-card').classList.remove('hidden');
+window.__lastDocFile = { base64, mimeType, filename: file.name };
+window.__docChatHistory = [{ question: '(úvodní vysvětlení dokumentu)', answer: (result.answer || '') }];
     } catch (e) {
       errBox.textContent = 'Chyba: ' + (e && e.message ? e.message : String(e));
       document.getElementById('doc-error').classList.remove('hidden');
@@ -1354,6 +1404,55 @@ const sources = result.sources || [];
       document.getElementById('doc-spinner').classList.add('hidden');
     }
   });
+}
+
+const btnDocFollowupAsk = document.getElementById('btn-doc-followup-ask');
+const docFollowupInputEl = document.getElementById('doc-followup-input');
+if (btnDocFollowupAsk) {
+  btnDocFollowupAsk.onclick = async () => {
+    hide($('doc-followup-error'));
+    const fq = (docFollowupInputEl.value || '').trim();
+    if (!fq) return;
+    if (!window.__lastDocFile) return;
+    show($('doc-followup-spinner'));
+    btnDocFollowupAsk.disabled = true;
+    try {
+      const result = await callFn('review-document', { file_base64: window.__lastDocFile.base64, mime_type: window.__lastDocFile.mimeType, filename: window.__lastDocFile.filename, question: fq, history: (window.__docChatHistory || []) });
+      const thread = document.getElementById('doc-followup-thread');
+      if (thread) {
+        const dsources = result.sources || [];
+        const dsourcesHtml = dsources.length
+          ? dsources.map(s => {
+              const label = s.heading ? (escapeHtml(s.title) + ' - ' + escapeHtml(s.heading)) : escapeHtml(s.title);
+              const urlOk = s.url && /^https?:/.test(s.url);
+              return urlOk
+                ? '<div class="source-item">' + label + ' <a href="' + s.url + '" target="_blank" rel="noopener">otevřít zdroj</a></div>'
+                : '<div class="source-item">' + label + '</div>';
+            }).join('')
+          : '<div class="source-item">Žádné související zdroje nebyly v databázi nalezeny</div>';
+        const block = document.createElement('div');
+        block.style.marginTop = '14px';
+        block.style.paddingTop = '14px';
+        block.style.borderTop = '1px solid var(--border)';
+        block.innerHTML = '<div style="font-weight:600;margin-bottom:6px">Dotaz: ' + escapeHtml(fq) + '</div>'
+          + '<div>' + renderAnswer(result.answer || '(prázdná odpověď)') + '</div>'
+          + (result.degraded ? '<div class="degraded-badge">Záložní režim - vyhledávání nebo AI selhaly, výsledek nemusí být kompletní</div>' : '')
+          + dsourcesHtml;
+        thread.appendChild(block);
+      }
+      window.__docChatHistory = [...(window.__docChatHistory || []), { question: fq, answer: (result.answer || '') }];
+      docFollowupInputEl.value = '';
+    } catch (e) {
+      $('doc-followup-error').textContent = 'Chyba: ' + (e.message || String(e)) + (e.detail ? (' ' + e.detail) : '');
+      show($('doc-followup-error'));
+    } finally {
+      hide($('doc-followup-spinner'));
+      btnDocFollowupAsk.disabled = false;
+    }
+  };
+}
+if (docFollowupInputEl) {
+  docFollowupInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); btnDocFollowupAsk.click(); } });
 }
 
 (function(){
