@@ -185,6 +185,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="trial-key-card" class="card hidden">
 <h2>Google Gemini API klíč</h2>
 <p class="muted">Pro zkušební provoz potřebujete vlastní Gemini API klíč, zdarma na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně.</p>
+      <a class="link-btn" id="open-apikey-guide-link-trial" style="font-size:12px;">📖 Návod jak klíč získat (zdarma)</a>
 <input type="text" id="trial-key-input" placeholder="Vložte Gemini API klíč">
 <button id="btn-trial-save-key">Uložit klíč</button>
 <div id="trial-key-msg" class="ok-msg hidden"></div>
@@ -376,6 +377,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div class="card">
 <h2>Google Gemini API klíč</h2>
 <p class="muted">Klíč získáte na <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ukládá se zašifrovaně, appka ho používá jen na vaše dotazy.</p>
+        <a class="link-btn" id="open-apikey-guide-link-settings" style="font-size:12px;">📖 Návod jak klíč získat (zdarma)</a>
 <div id="settings-key-status" class="muted" style="margin-bottom:10px;"></div>
 <div id="key-input-row" class="hidden">
 <input type="text" id="gemini-key-input" placeholder="Vložte Gemini API klíč">
@@ -394,7 +396,14 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="predpis-request-list" class="muted" style="margin-top:14px;font-size:0.9em"></div>
 </div>
 
-</div><!-- /settings-view -->
+</div>    <div class="card">
+      <h2>Smazat účet</h2>
+      <p class="muted">Trvale odstraní váš účet, uložený Gemini klíč i historii používání appky. Po smazání budete okamžitě odhlášeni a přístup nebude možné obnovit – pro další používání by bylo nutné založit účet nový a počkat na schválení. Tuto akci nelze vrátit zpět.</p>
+      <button id="btn-delete-account" class="secondary" style="border-color:var(--danger); color:var(--danger);">Smazat účet</button>
+      <div id="delete-account-msg" class="error hidden"></div>
+    </div>
+
+<!-- /settings-view -->
 
 
 
@@ -428,7 +437,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Jaké údaje o vás ukládáme:</strong> e-mail a heslo (heslo spravuje Supabase Auth, v čitelné podobě ho nevidíme), volitelně jméno, příjmení a telefon, a váš vlastní Google Gemini API klíč – ten je uložen šifrovaně, nikdo včetně nás ho nevidí v čitelné podobě. Dále ukládáme základní záznam používání appky (kdy a kolikrát jste appku použili) kvůli provozu a ochraně před zneužitím.</p>
 <p><strong>Co se děje s vaším dotazem nebo nahraným dokumentem:</strong> odešle se přes API vaším vlastním Gemini klíčem na servery Google, aby AI vygenerovala odpověď. Podle aktuálních podmínek Google (stav červenec 2026) Google u uživatelů z EU tento obsah nepoužívá k trénování svých AI modelů – krátce ho ale loguje kvůli prevenci zneužití a jinak se řídí vlastními zásadami ochrany soukromí Google, ne našimi. <strong>ParagrAlf samotný obsah nahraného dokumentu ani informace o jeho obsahu neukládá</strong> – po vygenerování odpovědi se zahazuje, u nás zůstává jen záznam, že jste funkci použili, ne co bylo v dokumentu. Doporučujeme nenahrávat vysoce citlivé osobní údaje (rodná čísla, zdravotní údaje apod.), pokud to není nezbytné.</p>
 <p><strong>Co neděláme:</strong> vaše údaje neprodáváme ani nepředáváme třetím stranám – mimo Google coby poskytovatele AI (na základě vašeho vlastního klíče) a technické infrastruktury appky (Supabase pro databázi, Netlify pro hosting appky, Tavily pro volitelné hledání na webu).</p>
-<p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava, výmaz i přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky. Správce appky pak váš účet i všechna data (uložený Gemini klíč, historii používání) trvale smaže.</p>
+<p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava a přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky. Účet i všechna svá data (uložený Gemini klíč, historii používání) si můžete kdykoliv sami trvale smazat v Nastavení tlačítkem „Smazat účet", nebo o to můžete požádat správce appky, který to udělá za vás.</p>
 <p><strong>Cookies:</strong> nepoužíváme sledovací cookies třetích stran, jen technickou přihlašovací session appky uloženou lokálně ve vašem prohlížeči.</p>
 <p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
 </div>
@@ -447,6 +456,20 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Rozhodnutí ÚOHS:</strong> pokrýváme přibližně posledních 10 let.</p>
 <p><strong>Důvodové zprávy k zákonům:</strong> dohledáváme a napojujeme automaticky, úspěšnost dohledání je zhruba 25–30 % – ne ke každému zákonu se podaří důvodovou zprávu najít.</p>
 <p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
+</div>
+</div>
+</div>
+<div id="apikey-guide-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:520px;width:100%;position:relative;max-height:80vh;overflow-y:auto;">
+<button id="apikey-guide-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Jak získat Google Gemini API klíč (zdarma)</h3>
+<div class="muted" style="font-size:13px; margin-bottom:12px;">Appka nic neplatí – funguje na vašem vlastním, zdarma vytvořeném klíči. Nepotřebujete placený účet Google Cloud ani platební kartu, stačí běžný Google účet (Gmail).</div>
+<div style="font-size:13.5px; line-height:1.7;">
+<p><strong>1.</strong> Otevřete <a class="link-btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> a přihlaste se svým Google účtem.</p>
+<p><strong>2.</strong> Klikněte na tlačítko „Create API key" (Vytvořit API klíč). Pokud appka nabídne výběr projektu, klidně zvolte „Create API key in new project" (Vytvořit v novém projektu) – nic to nestojí.</p>
+<p><strong>3.</strong> Zobrazí se vygenerovaný klíč (dlouhý řetězec znaků). Klikněte na ikonu kopírování vedle něj.</p>
+<p><strong>4.</strong> Vraťte se do appky a vložte zkopírovaný klíč do pole „Vložte Gemini API klíč" a uložte.</p>
+<p class="muted" style="font-size:12px;">Klíč appka ukládá u nás šifrovaně a používá ho jen na vaše vlastní dotazy – nikdo (ani my) ho v appce znovu neuvidí v čitelné podobě. Bezplatná kvóta se čas od času obnovuje sama, appka je navržená tak, aby ji zbytečně rychle nevyčerpala.</p>
 </div>
 </div>
 </div>
@@ -584,6 +607,20 @@ $('btn-toggle-key-input').onclick = () => {
 $('key-input-row').classList.toggle('hidden');
 };
 
+$('btn-delete-account').onclick = async () => {
+  hide($('delete-account-msg'));
+  if (!confirm('Opravdu trvale smazat váš účet? Tuto akci nelze vrátit zpět.')) return;
+  if (!confirm('Poslední potvrzení: opravdu nenávratně smazat účet a všechna svá data?')) return;
+  try {
+    await callFn('delete-account', {});
+    await supabase.auth.signOut();
+    location.reload();
+  } catch (e) {
+    $('delete-account-msg').textContent = 'Chyba: ' + e.message;
+    show($('delete-account-msg'));
+  }
+};
+
 $('btn-save-profile').onclick = async () => {
 hide($('profile-msg'));
 const { error } = await supabase.from('profiles').update({
@@ -634,6 +671,17 @@ await loadProfile();
   const opener = $('open-coverage-link');
   if (!modal || !closeBtn || !opener) return;
   opener.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+})();
+(function(){
+  const modal = $('apikey-guide-modal');
+  const closeBtn = $('apikey-guide-modal-close');
+  if (!modal || !closeBtn) return;
+  ['open-apikey-guide-link-trial','open-apikey-guide-link-settings'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
+  });
   closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 })();
