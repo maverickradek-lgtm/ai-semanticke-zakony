@@ -344,6 +344,15 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 </div>
 <div id="db-page-info" class="db-pager-info muted" style="margin-top:6px;"></div>
 </div>
+
+<div class="card">
+<h2>Chybí vám předpis?</h2>
+<p class="muted">Pokud v databázi chybí konkrétní zákon, vyhláška nebo jiný předpis, napište sem jeho číslo nebo označení (např. "141/1961 Sb."). Zkusíme ho při dalším běhu dohledat a nahrát, nad rámec běžné automatické aktualizace.</p>
+<input type="text" id="predpis-request-input" placeholder="Např. 141/1961 Sb.">
+<button id="btn-predpis-request">Odeslat žádost</button>
+<div id="predpis-request-msg" class="ok-msg hidden"></div>
+<div id="predpis-request-list" class="muted" style="margin-top:14px;font-size:0.9em"></div>
+</div>
 </div><!-- /database-view -->
 
 <div id="settings-view" class="hidden">
@@ -387,21 +396,16 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="key-msg" class="ok-msg hidden"></div>
 </div>
 
-<div class="card">
-<h2>Chybí vám předpis?</h2>
-<p class="muted">Pokud v databázi chybí konkrétní zákon, vyhláška nebo jiný předpis, napište sem jeho číslo nebo označení (např. "141/1961 Sb."). Zkusíme ho při dalším běhu dohledat a nahrát, nad rámec běžné automatické aktualizace.</p>
-<input type="text" id="predpis-request-input" placeholder="Např. 141/1961 Sb.">
-<button id="btn-predpis-request">Odeslat žádost</button>
-<div id="predpis-request-msg" class="ok-msg hidden"></div>
-<div id="predpis-request-list" class="muted" style="margin-top:14px;font-size:0.9em"></div>
-</div>
 
-</div>    <div class="card">
+
+<div class="card">
       <h2>Smazat účet</h2>
       <p class="muted">Trvale odstraní váš účet, uložený Gemini klíč i historii používání appky. Po smazání budete okamžitě odhlášeni a přístup nebude možné obnovit – pro další používání by bylo nutné založit účet nový a počkat na schválení. Tuto akci nelze vrátit zpět.</p>
       <button id="btn-delete-account" class="secondary" style="border-color:var(--danger); color:var(--danger);">Smazat účet</button>
       <div id="delete-account-msg" class="error hidden"></div>
     </div>
+
+    </div>    
 
 <!-- /settings-view -->
 
