@@ -18,6 +18,7 @@ external_id, takze dalsi beh pokracuje tam, kde skoncil predchozi.
 
 import os
 import re
+import time
 from datetime import date
 from io import BytesIO
 
@@ -30,6 +31,11 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 UOHS_JSONLD_URL = "https://uohs.gov.cz/opendata/rozhodnuti.jsonld"
 MAX_CHARS_PER_CHUNK = int(os.environ.get("MAX_CHARS_PER_CHUNK", "4000"))
 MAX_ITEMS = int(os.environ.get("MAX_ITEMS", "300"))
+
+# Tvrdy strop na celkovy cas behu (v sekundach) - defense in depth vedle
+# MAX_ITEMS, aby skript vzdy skoncil cistě sam, misto aby ho nekdy zabil
+# GitHub Actions 150min timeout uprostred stahovani/parsovani PDF.
+TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "8000"))
 
 # Cela historie UOHS od r. 1999 by pri soucasne dennii kvote Gemini embeddingu
 # znamenala tydny az mesice, nez by byla prohledatelna - proto se import
@@ -200,6 +206,7 @@ def upsert_document(source_id, item):
 
 
 def main():
+    start_time = time.time()
     log("=== UOHS sync: start ===")
     log(f"MAX_ITEMS={MAX_ITEMS}, CUTOFF_YEARS={CUTOFF_YEARS} (od {CUTOFF_DATE})")
     source_id = get_or_create_source()
@@ -230,6 +237,9 @@ def main():
         if MAX_ITEMS and imported >= MAX_ITEMS:
             log(f"Dosazen MAX_ITEMS={MAX_ITEMS}, koncim (zbytek doplni dalsi beh).")
             break
+        if time.time() - start_time > TIME_BUDGET_SECONDS:
+            log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan, koncim cistě (zbytek doplni dalsi beh).")
+            break
         try:
             doc_id, n_chunks = upsert_document(source_id, item)
             if doc_id:
@@ -245,7 +255,8 @@ def main():
 
     log(
         f"=== UOHS sync: hotovo, naimportovano {imported}, "
-        f"preskoceno {skipped}, mimo rozsah let {too_old}, chyb {errors} ==="
+        f"preskoceno {skipped}, mimo rozsah let {too_old}, chyb {errors}, "
+        f"cas {time.time()-start_time:.0f}s ==="
     )
 
 
