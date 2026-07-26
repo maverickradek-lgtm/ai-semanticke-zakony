@@ -394,7 +394,14 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div id="predpis-request-list" class="muted" style="margin-top:14px;font-size:0.9em"></div>
 </div>
 
-</div><!-- /settings-view -->
+</div>    <div class="card">
+      <h2>Smazat účet</h2>
+      <p class="muted">Trvale odstraní váš účet, uložený Gemini klíč i historii používání appky. Tuto akci nelze vrátit zpět.</p>
+      <button id="btn-delete-account" class="secondary" style="border-color:var(--danger); color:var(--danger);">Smazat účet</button>
+      <div id="delete-account-msg" class="error hidden"></div>
+    </div>
+
+<!-- /settings-view -->
 
 
 
@@ -428,7 +435,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Jaké údaje o vás ukládáme:</strong> e-mail a heslo (heslo spravuje Supabase Auth, v čitelné podobě ho nevidíme), volitelně jméno, příjmení a telefon, a váš vlastní Google Gemini API klíč – ten je uložen šifrovaně, nikdo včetně nás ho nevidí v čitelné podobě. Dále ukládáme základní záznam používání appky (kdy a kolikrát jste appku použili) kvůli provozu a ochraně před zneužitím.</p>
 <p><strong>Co se děje s vaším dotazem nebo nahraným dokumentem:</strong> odešle se přes API vaším vlastním Gemini klíčem na servery Google, aby AI vygenerovala odpověď. Podle aktuálních podmínek Google (stav červenec 2026) Google u uživatelů z EU tento obsah nepoužívá k trénování svých AI modelů – krátce ho ale loguje kvůli prevenci zneužití a jinak se řídí vlastními zásadami ochrany soukromí Google, ne našimi. <strong>ParagrAlf samotný obsah nahraného dokumentu ani informace o jeho obsahu neukládá</strong> – po vygenerování odpovědi se zahazuje, u nás zůstává jen záznam, že jste funkci použili, ne co bylo v dokumentu. Doporučujeme nenahrávat vysoce citlivé osobní údaje (rodná čísla, zdravotní údaje apod.), pokud to není nezbytné.</p>
 <p><strong>Co neděláme:</strong> vaše údaje neprodáváme ani nepředáváme třetím stranám – mimo Google coby poskytovatele AI (na základě vašeho vlastního klíče) a technické infrastruktury appky (Supabase pro databázi, Netlify pro hosting appky, Tavily pro volitelné hledání na webu).</p>
-<p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava, výmaz i přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky.</p>
+<p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava a přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky. Účet i všechna svá data (uložený Gemini klíč, historii používání) si můžete kdykoliv sami trvale smazat v Nastavení tlačítkem „Smazat účet".</p>
 <p><strong>Cookies:</strong> nepoužíváme sledovací cookies třetích stran, jen technickou přihlašovací session appky uloženou lokálně ve vašem prohlížeči.</p>
 <p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
 </div>
@@ -566,6 +573,20 @@ $('goto-settings-from-banner').onclick = () => showView('settings');
 
 $('btn-toggle-key-input').onclick = () => {
 $('key-input-row').classList.toggle('hidden');
+};
+
+$('btn-delete-account').onclick = async () => {
+  hide($('delete-account-msg'));
+  if (!confirm('Opravdu trvale smazat váš účet? Tuto akci nelze vrátit zpět.')) return;
+  if (!confirm('Poslední potvrzení: opravdu nenávratně smazat účet a všechna svá data?')) return;
+  try {
+    await callFn('delete-account', {});
+    await supabase.auth.signOut();
+    location.reload();
+  } catch (e) {
+    $('delete-account-msg').textContent = 'Chyba: ' + e.message;
+    show($('delete-account-msg'));
+  }
 };
 
 $('btn-save-profile').onclick = async () => {
