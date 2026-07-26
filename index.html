@@ -299,7 +299,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <div id="database-view" class="hidden">
 <div class="card">
-<h2>Přehled databáze</h2>
+<h2>Přehled databáze <a class="link-btn" id="open-coverage-link" style="font-size:12px; font-weight:400;">ℹ️ O databázi (co pokrýváme)</a></h2>
 <div id="db-stats" class="muted">Načítám…</div>
 </div>
 <div class="card">
@@ -437,6 +437,22 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Co neděláme:</strong> vaše údaje neprodáváme ani nepředáváme třetím stranám – mimo Google coby poskytovatele AI (na základě vašeho vlastního klíče) a technické infrastruktury appky (Supabase pro databázi, Netlify pro hosting appky, Tavily pro volitelné hledání na webu).</p>
 <p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava a přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky. Účet i všechna svá data (uložený Gemini klíč, historii používání) si můžete kdykoliv sami trvale smazat v Nastavení tlačítkem „Smazat účet".</p>
 <p><strong>Cookies:</strong> nepoužíváme sledovací cookies třetích stran, jen technickou přihlašovací session appky uloženou lokálně ve vašem prohlížeči.</p>
+<p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
+</div>
+</div>
+</div>
+<div id="coverage-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:560px;width:100%;position:relative;max-height:80vh;overflow-y:auto;">
+<button id="coverage-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Co appka pokrývá</h3>
+<div class="muted" style="font-size:13px; margin-bottom:12px;">Odznak u každého předpisu v Přehledu databáze ("v databázi" / "částečně" / "čeká na zpracování") ukazuje, jestli je KONKRÉTNÍ dokument už zpracovaný k vyhledávání. Tady jde o něco jiného – co appka jako CELÝ ZDROJ pokrývá nebo nepokrývá, bez ohledu na zpracování.</div>
+<div style="font-size:13.5px; line-height:1.6;">
+<p><strong>Zákony, vyhlášky, nařízení, dekrety (e-Sbírka):</strong> synchronizujeme z otevřených dat e-Sbírky, běžně denně. Starší (již nahrazená) znění předpisů appka eviduje, ale jejich plný text zatím záměrně nezpracováváme k vyhledávání – to je odložené, ne aktivně dokončované.</p>
+<p><strong>Judikatura Nejvyššího soudu (NS):</strong> čerpáme z kurátorované „Sbírky soudních rozhodnutí a stanovisek" – jde o reprezentativní výběr, ne o úplně všechna rozhodnutí NS.</p>
+<p><strong>Judikatura Nejvyššího správního soudu (NSS):</strong> obdobně, kurátorovaná sbírka, ne kompletní archiv.</p>
+<p><strong>Ústavní soud (ÚS):</strong> zatím nenapojeno – appka judikaturu Ústavního soudu prozatím nepokrývá.</p>
+<p><strong>Rozhodnutí ÚOHS:</strong> pokrýváme přibližně posledních 10 let.</p>
+<p><strong>Důvodové zprávy k zákonům:</strong> dohledáváme a napojujeme automaticky, úspěšnost dohledání je zhruba 25–30 % – ne ke každému zákonu se podaří důvodovou zprávu najít.</p>
 <p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
 </div>
 </div>
@@ -630,6 +646,15 @@ await loadProfile();
     const el = $(id);
     if (el) el.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
   });
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+})();
+(function(){
+  const modal = $('coverage-modal');
+  const closeBtn = $('coverage-modal-close');
+  const opener = $('open-coverage-link');
+  if (!modal || !closeBtn || !opener) return;
+  opener.addEventListener('click', (e) => { e.preventDefault(); modal.classList.remove('hidden'); });
   closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 })();
