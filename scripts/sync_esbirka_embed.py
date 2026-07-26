@@ -55,7 +55,16 @@ DOC_TYPE_FILTER = os.environ.get("DOC_TYPE_FILTER", "").strip() or None
 # pozadavku narazel na rate limit kvuli prilis rychlemu odesilani.
 REQUEST_DELAY_SECONDS = float(os.environ.get("REQUEST_DELAY_SECONDS", "2"))
 
-MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "3"))
+# Snizeno z puvodnich 3 na 1: kazdy neuspesny pokus uz sam o sobe stoji az
+# 3 x (15s * poradove cislo pokusu) = az 90s (viz embed_text), takze cekat
+# na 3 selhani za sebou k detekci vycerpane denni kvoty stalo az 675s jen
+# na rozpoznani stavu - a presne to zpusobovalo prekracovani 60min timeoutu.
+MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "1"))
+
+# Tvrdy strop na celkovy cas behu (v sekundach), aby skript vzdy skoncil
+# cistě sam - misto aby ho zabil az GitHub Actions 60min timeout uprostred
+# prace. Necha rezervu pod 60 min na checkout/instalaci zavislosti.
+TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 256  # Matryoshka zkraceni z puvodnich 768 kvuli uspore mista v Supabase free tier (2026-07-18)
@@ -91,7 +100,7 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
     """Vraci (embedding, quota_exhausted); embedding je None pri selhani;
     quota_exhausted je True, pokud jsme vycerpali vsechny pokusy kvuli 429
     (silny signal, ze je denni kvota pryc, ne jen kratkodoby spicak)."""
-    for attempt in range(5):
+    for attempt in range(3):
         r = SESSION.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent",
             headers={"Content-Type": "application/json", "x-goog-api-key": gemini_key},
@@ -200,8 +209,9 @@ def update_chunk_embedding(chunk_id, embedding):
 
 
 def main():
+    start_time = time.time()
     log("=== Embedding dobihani (faze B): start ===")
-    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}, REQUEST_DELAY_SECONDS={REQUEST_DELAY_SECONDS}, DOC_TYPE_FILTER={DOC_TYPE_FILTER}")
+    log(f"DAILY_EMBED_BUDGET={DAILY_EMBED_BUDGET}, PAGE_SIZE={PAGE_SIZE}, REVERSE_ORDER={REVERSE_ORDER}, REQUEST_DELAY_SECONDS={REQUEST_DELAY_SECONDS}, DOC_TYPE_FILTER={DOC_TYPE_FILTER}, TIME_BUDGET_SECONDS={TIME_BUDGET_SECONDS}")
     gemini_key = get_admin_gemini_key()
 
     total_done = 0
@@ -209,8 +219,14 @@ def main():
     remaining = DAILY_EMBED_BUDGET
     consecutive_quota_failures = 0
     quota_exhausted = False
+    time_exhausted = False
 
-    while remaining > 0 and not quota_exhausted:
+    while remaining > 0 and not quota_exhausted and not time_exhausted:
+        if time.time() - start_time > TIME_BUDGET_SECONDS:
+            log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan - koncim cistě, zbytek doplni zitrejsi beh.")
+            time_exhausted = True
+            break
+
         batch_limit = min(PAGE_SIZE, remaining)
         chunks = fetch_pending_chunks(batch_limit)
         if not chunks:
@@ -221,6 +237,11 @@ def main():
         titles = fetch_document_titles(document_ids)
 
         for c in chunks:
+            if time.time() - start_time > TIME_BUDGET_SECONDS:
+                log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan uprostred davky - koncim cistě, zbytek doplni zitrejsi beh.")
+                time_exhausted = True
+                break
+
             title = titles.get(c["document_id"], "")
             heading = c["heading"]
             content = c["content"]
@@ -250,14 +271,14 @@ def main():
 
         remaining -= len(chunks)
 
-        if quota_exhausted:
+        if quota_exhausted or time_exhausted:
             break
 
         if len(chunks) < batch_limit:
             log("Posledni neuplna stranka vracena, dalsi kolo by bylo prazdne - koncim.")
             break
 
-    log(f"=== Embedding dobihani: hotovo, ohodnoceno {total_done}, selhalo {total_failed} ===")
+    log(f"=== Embedding dobihani: hotovo, ohodnoceno {total_done}, selhalo {total_failed}, cas {time.time()-start_time:.0f}s ===")
 
 
 if __name__ == "__main__":
