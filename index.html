@@ -293,6 +293,10 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <h2>Registrovaní uživatelé</h2>
 <div id="approved-list" class="muted">Načítám…</div>
 </div>
+<div class="card">
+<h2>Žádosti o předpisy</h2>
+<div id="admin-predpis-list" class="muted">Načítám…</div>
+</div>
 </div><!-- /admin-view -->
 
 <div id="database-view" class="hidden">
@@ -570,6 +574,7 @@ loadPredpisRequests();
 show($('admin-view'));
 loadAdminList();
 loadApprovedList();
+loadAdminPredpisRequests();
 } else if (view === 'database') {
 show($('database-view'));
 loadDatabaseStats();
@@ -1024,6 +1029,45 @@ loadAdminList();
 };
 row.appendChild(btnApprove);
 row.appendChild(btnReject);
+list.appendChild(row);
+});
+}
+
+async function loadAdminPredpisRequests() {
+const { data, error } = await supabase
+.from('predpis_requests')
+.select('id, query_text, status, note, requested_at')
+.order('requested_at', { ascending: false })
+.limit(50);
+const list = $('admin-predpis-list');
+if (error) { list.textContent = 'Chyba: ' + error.message; return; }
+if (!data || data.length === 0) { list.textContent = 'Žádné žádosti.'; return; }
+list.innerHTML = '';
+data.forEach(r => {
+const row = document.createElement('div');
+row.className = 'admin-row';
+const d = new Date(r.requested_at).toLocaleDateString('cs-CZ');
+const statusLabel = { pending: 'čeká', fetched: 'nalezeno a nahráno', not_found: 'nenalezeno', error: 'chyba' }[r.status] || r.status;
+row.innerHTML = `<span>${escapeHtml(r.query_text)} <span class="muted" style="font-size:0.85em">(${d}, ${escapeHtml(statusLabel)}${r.note ? ' – ' + escapeHtml(r.note) : ''})</span></span>`;
+if (r.status === 'pending') {
+const btnImport = document.createElement('button');
+btnImport.className = 'small';
+btnImport.textContent = 'Importovat';
+btnImport.onclick = async () => {
+btnImport.disabled = true;
+btnImport.textContent = 'Importuji…';
+try {
+const result = await callFn('import-predpis-request', { request_id: r.id });
+alert(result.result === 'imported'
+? `Naimportováno: ${result.title} (${result.chunks} §).`
+: 'Předpis nebyl v e-Sbírce nalezen.');
+} catch (e) {
+alert('Chyba při importu: ' + e.message);
+}
+loadAdminPredpisRequests();
+};
+row.appendChild(btnImport);
+}
 list.appendChild(row);
 });
 }
