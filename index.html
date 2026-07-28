@@ -133,6 +133,17 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 @keyframes cite-flash{0%{background:rgba(250,204,21,.35)}100%{background:transparent}}
 .degraded-badge{margin:0 0 8px;padding:6px 10px;border-radius:8px;background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);font-size:.85em}
 .pill.info{background:rgba(99,102,241,.15);color:var(--accent)}
+
+@media (max-width: 768px) {
+  body { background-image: none; }
+  header { flex-wrap: wrap; padding: 14px 16px; gap: 12px; }
+  header .sub { font-size: 12px; }
+  main { padding: 20px 14px 60px; }
+  .card { padding: 16px; }
+  #header-actions { width: 100%; }
+  #header-actions .row { width: 100%; }
+  #header-actions button { flex: 1 1 auto; }
+}
 </style>
 </head>
 <body>
