@@ -60,15 +60,17 @@ button {
 background: var(--accent);
 color: white;
 border: none;
-padding: 10px 18px;
+padding: 12px 18px;
 border-radius: 8px;
 font-size: 14px;
 cursor: pointer;
 font-weight: 600;
+min-height: 44px;
 }
 button:hover { background: var(--accent-2); }
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 button.small { padding: 6px 12px; font-size: 13px; }
+#header-actions button { padding: 12px 16px; min-height: 44px; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .muted { color: var(--muted); font-size: 13px; }
@@ -160,9 +162,9 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <h2 id="auth-title">Přihlášení</h2>
 <div id="auth-error" class="error hidden"></div>
 <div id="auth-ok" class="ok-msg hidden"></div>
-<label>E-mail</label>
+<label for="auth-email">E-mail</label>
 <input type="email" id="auth-email" placeholder="vas@email.cz">
-<label>Heslo</label>
+<label for="auth-password">Heslo</label>
 <input type="password" id="auth-password" placeholder="••••••••">
 <div class="toggle-row" style="align-items:flex-start;">
 <input type="checkbox" id="consent-checkbox" />
@@ -360,11 +362,11 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <div class="card">
 <h2>Údaje o účtu</h2>
-<label>Jméno</label>
+<label for="settings-first-name">Jméno</label>
 <input type="text" id="settings-first-name" placeholder="Jméno">
-<label>Příjmení</label>
+<label for="settings-last-name">Příjmení</label>
 <input type="text" id="settings-last-name" placeholder="Příjmení">
-<label>Telefon</label>
+<label for="settings-phone">Telefon</label>
 <input type="text" id="settings-phone" placeholder="+420 ...">
 <button id="btn-save-profile">Uložit údaje</button>
 <div id="profile-msg" class="ok-msg hidden"></div>
@@ -373,7 +375,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <div class="card">
 <h2>E-mail a přihlášení</h2>
 <p class="muted">Aktuální e-mail: <strong id="settings-current-email"></strong></p>
-<label>Nový e-mail (nepovinné, pro změnu)</label>
+<label for="settings-new-email">Nový e-mail (nepovinné, pro změnu)</label>
 <input type="email" id="settings-new-email" placeholder="novy@email.cz">
 <button id="btn-change-email" class="secondary">Změnit e-mail</button>
 <div id="email-msg" class="ok-msg hidden"></div>
