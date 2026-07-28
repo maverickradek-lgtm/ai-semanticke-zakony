@@ -91,6 +91,8 @@ font-weight: 600;
 .sources { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
 .source-item { font-size: 13px; margin-bottom: 8px; color: var(--muted); }
 .source-item a { color: var(--accent); }
+.source-item-uncited { opacity: 0.6; }
+.uncited-note { font-style: italic; font-size: 12px; }
 .toggle-row { display: flex; align-items: center; gap: 8px; margin: 10px 0 16px; }
 .admin-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .spinner { color: var(--muted); font-size: 13px; }
@@ -891,9 +893,11 @@ function sourceRow(s) {
 const icon = s.type === 'zakon' ? '📜' : (s.type === 'web' ? '🌐' : '⚖️');
 const label = `${icon} <strong>${escapeHtml(s.title || '')}</strong>${s.heading ? ' – ' + escapeHtml(s.heading) : ''}`;
 const safeUrl = s.url && /^https?:\/\//i.test(s.url) ? s.url : null;
+const dimCls = s.cited === false ? ' source-item-uncited' : '';
+const dimNote = s.cited === false ? ' <span class="uncited-note">(nalezeno, ale AI to nepoužilo v odpovědi)</span>' : '';
 return safeUrl
-? `<div class="source-item">${label} — <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
-: `<div class="source-item">${label}</div>`;
+? `<div class="source-item${dimCls}">${label}${dimNote} — <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">otevřít zdroj</a></div>`
+: `<div class="source-item${dimCls}">${label}${dimNote}</div>`;
 }
 
 $('btn-ask').onclick = async () => {
