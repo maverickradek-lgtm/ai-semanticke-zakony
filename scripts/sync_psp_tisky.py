@@ -10,9 +10,13 @@ is_current=true), ktery jeste nema pripojenou duvodovou zpravu:
    zakonu obsahuje odkaz na "historie.sqw?o={o}&t={t}", tj. na snemovni tisk,
    ze ktereho zakon vzesel (o = volebni obdobi, t = cislo tisku).
 2. Z toho sestavime https://www.psp.cz/sqw/text/tiskt.sqw?o={o}&ct={t}&ct1=0
-   - hlavni (puvodni) verze tisku, ktera obsahuje na strance odkaz
-   "Verze PDF" (orig2.sqw?idd=...&pdf=1). PDF obsahuje jak text navrhu
-   zakona, tak pripojenou "Duvodovou zpravu" (viz dale ve stejnem souboru).
+   - hlavni (puvodni) verze tisku. Stranka obsahuje sekci s nadpisem
+   "...zakona vcetne duvodove zpravy" a pod ni odkaz na PDF verzi
+   (<a href="orig2.sqw?idd=...", title="Dokument PDF">) - POZOR, tento
+   odkaz uz (od cca 2026-07) NEMA parametr "&pdf=1" v URL, jak puvodne
+   ocekaval tento skript (zjisteno a opraveno 2026-07-28 - viz find_pdf_idd).
+   PDF obsahuje jak text navrhu zakona, tak pripojenou "Duvodovou zpravu"
+   (viz dale ve stejnem souboru).
 3. Stahneme PDF a pomoci pypdf z nej vytahneme text. Najdeme nadpis
    "Duvodova zprava" (case-insensitive, ignoruje se diakritika u
    "u"/"ů") a vezmeme vse od tohoto mista do konce dokumentu.
@@ -75,7 +79,13 @@ PDF_URL = "https://www.psp.cz/sqw/text/orig2.sqw"
 
 CITACE_RE = re.compile(r"^(\d{1,4})/(\d{4})\s*Sb\.?$")
 HISTORIE_RE = re.compile(r"historie\.sqw\?o=(\d+)&(?:amp;)?t=([\w\-]+)", re.IGNORECASE)
-PDF_IDD_RE = re.compile(r"orig2\.sqw\?idd=(\d+)&(?:amp;)?pdf=1", re.IGNORECASE)
+# POZOR: puvodni verze tohoto regexu hledala "&pdf=1" v URL - to uz na
+# aktualni strance psp.cz vubec neni (zjisteno 2026-07-28 pri rucnim overeni
+# proti tisku 637/7). Novy pristup: najit nadpis sekce "...vcetne duvodove
+# zpravy" a vzit prvni odkaz na PDF (title="Dokument PDF") za nim - presne
+# tak, jak stranka soucasne PDF verzi navrhu zakona+duvodove zpravy oznacuje.
+DZ_SECTION_HEADING = "z\u00e1kona v\u010detn\u011b d\u016fvodov\u00e9 zpr\u00e1vy"
+PDF_IDD_RE = re.compile(r'orig2\.sqw\?idd=(\d+)"[^>]*title="Dokument PDF"', re.IGNORECASE)
 DZ_HEADING_RE = re.compile(r"D[uů]vodov[áa]\s+zpr[áa]va", re.IGNORECASE)
 
 SESSION = requests.Session()
@@ -229,7 +239,10 @@ def find_pdf_idd(o, t):
     if not r.ok:
         return None
     html = r.content.decode("cp1250", errors="replace")
-    m = PDF_IDD_RE.search(html)
+    heading_idx = html.find(DZ_SECTION_HEADING)
+    if heading_idx == -1:
+        return None
+    m = PDF_IDD_RE.search(html, heading_idx)
     if not m:
         return None
     return m.group(1)
