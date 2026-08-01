@@ -286,9 +286,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <div id="doc-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:10px;cursor:pointer;transition:border-color .15s;">
 <div class="muted" id="doc-dropzone-text">PÅetÃ¡hnÄte soubor sem, nebo kliknÄte pro vÃ½bÄr</div>
-<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain" style="display:none;">
-</div>
-<div class="muted" style="font-size:12px;margin-bottom:14px;">PodporovanÃ© formÃ¡ty: PDF, TXT. Max. velikost 6&nbsp;MB. (WordovÃ© dokumenty zatÃ­m nejsou podporovanÃ©.)</div>
+<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain,.docx,.doc,application/vnd.open<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT, DOCX, DOC. Max. velikost 6 MB.orovanÃ© formÃ¡ty: PDF, TXT. Max. velikost 6&nbsp;MB. (WordovÃ© dokumenty zatÃ­m nejsou podporovanÃ©.)</div>
 <button id="btn-doc-review">NahrÃ¡t a vysvÄtlit</button>
 <span id="doc-spinner" class="hidden muted" style="margin-left:10px;">ZpracovÃ¡vÃ¡mâ¦</span>
 <div id="doc-error" class="hidden" style="color:var(--danger);margin-top:12px;"></div>
@@ -1441,7 +1439,7 @@ hide($('doc-followup-error'));
         reader.readAsDataURL(file);
       });
       const base64 = dataUrl.split(',')[1];
-      const mimeType = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'text/plain');
+      const mimeType = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : /\.docx$/i.test(file.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : /\.doc$/i.test(file.name) ? 'application/msword' : 'text/plain');
       const result = await callFn('review-document', { file_base64: base64, mime_type: mimeType, filename: file.name });
       document.getElementById('doc-answer-text').innerHTML = renderAnswer(result.answer || '(prÃ¡zdnÃ¡ odpovÄÄ)');
       if (result.degraded) { const _elDeg = document.getElementById('doc-answer-text'); if (_elDeg) _elDeg.insertAdjacentHTML('afterbegin', '<div class="degraded-badge">â ï¸ ZÃ¡loÅ¾nÃ­ reÅ¾im: vyhledÃ¡vÃ¡nÃ­ nebo AI selhaly, vÃ½sledek nemusÃ­ bÃ½t kompletnÃ­.</div>'); }
