@@ -60,20 +60,28 @@ def sb_headers(content_type="application/json"):
 
 
 def fetch_batch():
-    r = SESSION.get(
-        f"{SUPABASE_URL}/rest/v1/chunks",
-        headers=sb_headers(),
-        params={
-            "select": "id,content",
-            "content_migrated": "eq.false",
-            "content": "not.is.null",
-            "order": "id.asc",
-            "limit": str(BATCH_SIZE),
-        },
-        timeout=30,
-    )
-    r.raise_for_status()
-    return r.json()
+    for attempt in range(5):
+        r = SESSION.get(
+            f"{SUPABASE_URL}/rest/v1/chunks",
+            headers=sb_headers(),
+            params={
+                "select": "id,content",
+                "content_migrated": "eq.false",
+                "content": "not.is.null",
+                "order": "id.asc",
+                "limit": str(BATCH_SIZE),
+            },
+            timeout=30,
+        )
+        if r.status_code >= 500:
+            wait = 10 * (attempt + 1)
+            log(f"   fetch_batch chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
+            time.sleep(wait)
+            continue
+        r.raise_for_status()
+        return r.json()
+    log("   fetch_batch selhalo po 5 pokusech (opakovane 5xx), vzdavam se pro tento beh, dalsi beh bude pokracovat od stejneho mista.")
+    return []
 
 
 def upload_one(chunk):
