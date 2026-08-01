@@ -286,7 +286,9 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 
 <div id="doc-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:10px;cursor:pointer;transition:border-color .15s;">
 <div class="muted" id="doc-dropzone-text">PÅetÃ¡hnÄte soubor sem, nebo kliknÄte pro vÃ½bÄr</div>
-<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain,.docx,.doc,application/vnd.open<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT, DOCX, DOC. Max. velikost 6 MB.orovanÃ© formÃ¡ty: PDF, TXT. Max. velikost 6&nbsp;MB. (WordovÃ© dokumenty zatÃ­m nejsou podporovanÃ©.)</div>
+<input type="file" id="doc-file-input" accept="application/pdf,.pdf,.txt,text/plain,.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword" style="display:none;">
+</div>
+<div class="muted" style="font-size:12px;margin-bottom:14px;">Podporované formáty: PDF, TXT, DOCX, DOC. Max. velikost 6 MB.</div>
 <button id="btn-doc-review">NahrÃ¡t a vysvÄtlit</button>
 <span id="doc-spinner" class="hidden muted" style="margin-left:10px;">ZpracovÃ¡vÃ¡mâ¦</span>
 <div id="doc-error" class="hidden" style="color:var(--danger);margin-top:12px;"></div>
