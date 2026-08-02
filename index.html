@@ -1264,6 +1264,24 @@ prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
 }
+if (currentProfile && currentProfile.is_admin) {
+const topLabel = document.createElement('label');
+topLabel.className = 'small muted';
+topLabel.style.marginLeft = '8px';
+topLabel.style.display = 'inline-flex';
+topLabel.style.alignItems = 'center';
+topLabel.style.gap = '4px';
+const topCheckbox = document.createElement('input');
+topCheckbox.type = 'checkbox';
+topCheckbox.checked = (d.embed_priority || 0) >= 300;
+topCheckbox.onchange = async () => {
+const { error } = await supabase.rpc('set_embed_priority_top', { p_document_id: d.id, p_top: topCheckbox.checked });
+if (error) { alert('Chyba: ' + error.message); topCheckbox.checked = !topCheckbox.checked; }
+};
+topLabel.appendChild(topCheckbox);
+topLabel.appendChild(document.createTextNode('TOP priorita'));
+actions.appendChild(topLabel);
+}
 if (d.url) {
 const a = document.createElement('a');
 a.href = d.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'link-btn'; a.textContent = 'otevřít';
