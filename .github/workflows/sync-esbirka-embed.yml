@@ -2,8 +2,9 @@ name: Sync e-Sbirka - denni dobihani embeddingu (faze B)
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 3 * * *"
+  workflow_run:
+    workflows: ["Sync judikatura - Vrchni soudy"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
