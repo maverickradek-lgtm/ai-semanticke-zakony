@@ -16,8 +16,9 @@ on:
         required: false
         default: "15"
 
-  schedule:
-    - cron: "0 5 * * *"
+  workflow_run:
+    workflows: ["Sync e-Sbirka - denni dobihani embeddingu (faze B)"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
