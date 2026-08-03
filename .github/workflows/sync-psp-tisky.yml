@@ -12,8 +12,9 @@ on:
         required: false
         default: "250"
 
-  schedule:
-    - cron: "0 2 * * *"
+  workflow_run:
+    workflows: ["Sync UOHS - rozhodnuti (otevrena data)"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
