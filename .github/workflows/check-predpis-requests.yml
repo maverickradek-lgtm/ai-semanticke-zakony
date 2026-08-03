@@ -2,8 +2,9 @@ name: Kontrola zadosti o predpis
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * *"
+  workflow_run:
+    workflows: ["Sync e-Sbirka - historicka zneni (od 2020)"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
