@@ -7,8 +7,9 @@ on:
         description: "Pocet dnu zpet k importu (pro prvni velky beh zadejte vyssi cislo, napr. 365)"
         required: false
         default: "5"
-  schedule:
-    - cron: "30 2 * * *"
+  workflow_run:
+    workflows: ["Sync psp.cz - duvodove zpravy k zakonum"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
