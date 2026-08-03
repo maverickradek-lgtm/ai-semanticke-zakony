@@ -7,7 +7,7 @@ on:
         description: "Max. pocet novych rozhodnuti k importu v tomto behu"
         default: "1000"
   schedule:
-    - cron: "0 1 * * *"
+    - cron: "0 23 * * *"
 
 concurrency:
   group: db-heavy-primary
