@@ -9,8 +9,9 @@ on:
       cutoff_date:
         description: "Od jakeho data importovat historicka zneni (YYYY-MM-DD)"
         default: "2020-01-01"
-  schedule:
-    - cron: "30 5 * * *"
+  workflow_run:
+    workflows: ["Presun chunks.content do Supabase Storage"]
+    types: [completed]
 
 concurrency:
   group: db-heavy-primary
