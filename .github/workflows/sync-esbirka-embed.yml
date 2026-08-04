@@ -78,3 +78,27 @@ jobs:
           DAILY_EMBED_BUDGET: "450"
           EMBED_PAGE_SIZE: "150"
         run: python scripts/sync_esbirka_embed.py
+
+
+  embed_judikat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run embedding backfill (vyhrazeny klic pro judikaturu Vrchnich soudu, 2. DB)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
+          GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_UOHS }}
+          DOC_TYPE_FILTER: "judikat"
+          DAILY_EMBED_BUDGET: "450"
+          EMBED_PAGE_SIZE: "150"
+        run: python scripts/sync_esbirka_embed.py
