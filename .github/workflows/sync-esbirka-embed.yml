@@ -71,8 +71,8 @@ jobs:
 
       - name: Run embedding backfill (vyhrazeny klic pro rozhodnuti UOHS)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
           GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_UOHS }}
           DOC_TYPE_FILTER: "rozhodnuti_uohs"
           DAILY_EMBED_BUDGET: "450"
