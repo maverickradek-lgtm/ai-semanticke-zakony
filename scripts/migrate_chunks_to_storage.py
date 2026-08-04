@@ -14,10 +14,20 @@ Postup pro kazdy chunk (content is not null AND content_migrated = false):
    viz upravene edge funkce ai-query / review-document, ktere ho pri
    sestavovani odpovedi cetou).
 2. Po uspesnem nahrani zavolame RPC finalize_chunk_storage_migration_batch,
-   ktera v JEDNOM atomickem SQL prikazu spocita content_tsv (plnotextovy
-   index pro zalozni vyhledavani klicovych slov - viz keywordFallbackSearch
-   v edge funkcich), vynuluje content a nastavi content_migrated=true.
-   Diky tomu nikdy nenastane stav "content=null, ale tsv nespocitany".
+   ktera v JEDNOM atomickem SQL prikazu vynuluje content a nastavi
+   content_migrated=true.
+
+   POZOR (oprava 2026-08-04): drive tento RPC navic pocital a ukladal
+   content_tsv (plnotextovy index pro zalozni vyhledavani klicovych slov -
+   viz keywordFallbackSearch v ai-query). Zjistilo se, ze tsvector byval
+   v prumeru VETSI (~2000 B) nez komprimovany text, ktery nahrazoval
+   (~1200 B) - migrace tak paradoxne DB spis zvetsovala, ne zmensovala.
+   RPC uz content_tsv nepocita; existujici GIN index chunks_content_tsv_idx
+   (61MB) byl smazan (uvolnilo se misto okamzite, bez nutnosti VACUUM FULL,
+   ktery na tomto Supabase tarifu stejne neni mozny - viz pamet asistenta
+   db_read_only_lockout_2026-08-04). Zalozni vyhledavani klicovych slov tim
+   ztraci pokryti - pokud bude v budoucnu potreba, je nutne navrhnout jinou
+   architekturu (nepocitat/neukladat tsv jako trvaly sloupec v teto tabulce).
 
 Skript je idempotentni a bezpecne opakovatelny - vyber "content_migrated =
 false" zajisti, ze uz migrovane radky se znovu nezpracovavaji, i kdyz beh
