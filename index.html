@@ -1169,9 +1169,13 @@ async function loadDatabaseStats() {
 const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava'];
 const el = $('db-stats');
 el.textContent = 'Načítám…';
-const results = await Promise.all(types.map(t =>
-(SECOND_DB_DOC_TYPES.has(t) ? supabaseNs : supabase).from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t)
-));
+const results = await Promise.all(types.map(async t => {
+if (SECOND_DB_DOC_TYPES.has(t)) {
+const r = await supabaseNs.rpc('count_documents_by_type', { p_doc_type: t });
+return { count: r.error ? 0 : (r.data || 0) };
+}
+return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
+}));
 const total = results.reduce((s, r) => s + (r.count || 0), 0);
 const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`);
 el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
@@ -1184,11 +1188,17 @@ list.textContent = 'Načítám…';
 const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
-let query = useSecondDb
-? supabaseNs.from('documents').select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority', { count: 'exact' }).order('created_at', { ascending: false })
-: supabase.from('documents')
-.select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority,is_current', { count: 'exact' })
-.order('predpis_rok', { ascending: true, nullsFirst: false })
+let data, error, count;
+if (useSecondDb) {
+const off = page * DB_PAGE_SIZE;
+const rpcRes = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: typeFilter, p_search: search || null, p_limit: DB_PAGE_SIZE, p_offset: off });
+if (rpcRes.error) { data = null; error = rpcRes.error; count = 0; }
+else { data = rpcRes.data.data; error = null; count = rpcRes.data.count; }
+} else {
+let query = supabase
+    .from('documents')
+    .select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority,is_current', { count: 'exact' })
+    .order('predpis_rok', { ascending: true, nullsFirst: false })
     .order('predpis_cislo', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false });
 query = query.range(page * DB_PAGE_SIZE, page * DB_PAGE_SIZE + DB_PAGE_SIZE - 1);
@@ -1197,7 +1207,8 @@ if (search) {
       query = query.or(`title.ilike.%${safeSearch}%,external_id.ilike.%${safeSearch}%`);
     }
 if (typeFilter) query = query.eq('doc_type', typeFilter);
-const { data, error, count } = await query;
+({ data, error, count } = await query);
+}
 if (error) { list.textContent = 'Chyba: ' + error.message; return; }
 if (!data || data.length === 0) {
 list.textContent = 'Žádné záznamy.';
