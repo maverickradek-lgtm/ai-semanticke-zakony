@@ -31,7 +31,7 @@ jobs:
 
       - name: Run judikatura sync (Vrchni soudy)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
           BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '5' }}
         run: python scripts/sync_justice_vrchni.py
