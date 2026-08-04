@@ -29,7 +29,7 @@ jobs:
 
       - name: Run UOHS sync
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
           MAX_ITEMS: ${{ github.event.inputs.max_items || '1000' }}
         run: python scripts/sync_uohs.py
