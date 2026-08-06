@@ -1,0 +1,50 @@
+name: Repack chunks (reclaim real disk space)
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: db-heavy-primary
+  cancel-in-progress: false
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install psql client (PGDG repo)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
+          sudo gpg --batch --yes --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17 build-essential libpq-dev postgresql-server-dev-17 zlib1g-dev libzstd-dev liblz4-dev libreadline-dev
+
+      - name: Build pg_repack 1.5.2 client from source (must match DB extension version)
+        run: |
+          git clone --branch ver_1.5.2 --depth 1 https://github.com/reorg/pg_repack.git
+          cd pg_repack
+          make
+          sudo make install
+          /usr/lib/postgresql/17/bin/pg_repack --version
+
+      - name: Show DB + chunks size BEFORE repack
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$PGURL" -c "select pg_size_pretty(pg_database_size(current_database())) as db_size_before;"
+          psql "$PGURL" -c "select pg_size_pretty(pg_total_relation_size('chunks')) as chunks_size_before;"
+
+      - name: Run pg_repack on chunks table (production)
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          /usr/lib/postgresql/17/bin/pg_repack -d "$PGURL" -t public.chunks --no-superuser-check -j 2 --echo
+
+      - name: Show DB + chunks size AFTER repack
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$PGURL" -c "select pg_size_pretty(pg_database_size(current_database())) as db_size_after;"
+          psql "$PGURL" -c "select pg_size_pretty(pg_total_relation_size('chunks')) as chunks_size_after;"
