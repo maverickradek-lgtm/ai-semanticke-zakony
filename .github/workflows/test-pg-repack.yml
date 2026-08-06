@@ -8,14 +8,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Install pg_repack client (PGDG repo, matching PG17)
+      - name: Install pg_repack client (PGDG repo, pinned to 1.5.2 to match DB extension)
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
           sudo gpg --batch --yes --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17 postgresql-17-repack
+          sudo apt-get install -y postgresql-client-17
+          echo "--- available postgresql-17-repack versions ---"
+          apt-cache madison postgresql-17-repack || true
+          sudo apt-get install -y postgresql-17-repack=1.5.2-1.pgdg22.04+1 || sudo apt-get install -y postgresql-17-repack=1.5.2* || sudo apt-get install -y postgresql-17-repack
 
       - name: Show sizes BEFORE repack
         env:
