@@ -70,17 +70,15 @@ def sb_headers(content_type="application/json"):
 
 
 def fetch_batch():
+    # Pouziva RPC get_pending_storage_migration_chunks, ktera razeni radi
+    # nejdriv starsi zneni (documents.is_current = false) - to je archiv,
+    # ktery appka dnes nikde nezobrazuje ani nevyhledava (embedding se mu
+    # zamerne preskakuje), takze je bezpecne a zadouci migrovat ho prvni.
     for attempt in range(5):
-        r = SESSION.get(
-            f"{SUPABASE_URL}/rest/v1/chunks",
+        r = SESSION.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/get_pending_storage_migration_chunks",
             headers=sb_headers(),
-            params={
-                "select": "id,content",
-                "content_migrated": "eq.false",
-                "content": "not.is.null",
-                "order": "id.asc",
-                "limit": str(BATCH_SIZE),
-            },
+            json={"p_limit": BATCH_SIZE},
             timeout=30,
         )
         if r.status_code >= 500:
