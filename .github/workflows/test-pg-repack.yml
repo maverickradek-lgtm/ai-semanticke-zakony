@@ -5,20 +5,25 @@ on:
 
 jobs:
   test-repack:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Install pg_repack client (PGDG repo, jammy build should have 1.5.2 to match DB extension)
+      - name: Install psql client (PGDG repo)
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
           sudo gpg --batch --yes --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
-          echo "--- available postgresql-17-repack versions ---"
-          apt-cache madison postgresql-17-repack || true
-          sudo apt-get install -y postgresql-17-repack
+          sudo apt-get install -y postgresql-client-17 build-essential libpq-dev postgresql-server-dev-17 zlib1g-dev libzstd-dev liblz4-dev
+
+      - name: Build pg_repack 1.5.2 client from source (to match DB extension version exactly)
+        run: |
+          git clone --branch ver_1.5.2 --depth 1 https://github.com/reorg/pg_repack.git
+          cd pg_repack
+          make
+          sudo make install
+          /usr/lib/postgresql/17/bin/pg_repack --version
 
       - name: Show sizes BEFORE repack
         env:
@@ -31,7 +36,6 @@ jobs:
         env:
           PGURL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          /usr/lib/postgresql/17/bin/pg_repack --version
           /usr/lib/postgresql/17/bin/pg_repack -d "$PGURL" -t public.repack_test --no-superuser-check -j 2 --echo
 
       - name: Show sizes AFTER repack
