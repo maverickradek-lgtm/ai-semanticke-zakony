@@ -178,12 +178,12 @@ CZECH_MONTHS = {
 
 
 def _strip_diacritics(s):
-    table = str.maketrans("áčďéěíňóřšťúůýž", "acdeeinorstuuyz")
+    table = str.maketrans("\u00e1\u010d\u010f\u00e9\u011b\u00ed\u0148\u00f3\u0159\u0161\u0165\u00fa\u016f\u00fd\u017e", "acdeeinorstuuyz")
     return s.lower().translate(table)
 
 
 def parse_czech_date(text):
-    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-Zá-žÁ-Ž]+)\.?\s*(\d{4})", text)
+    m = re.search("(\\d{1,2})\\.?\\s*(\\d{1,2}|[a-zA-Z\u00e1-\u017e\u00c1-\u017d]+)\\.?\\s*(\\d{4})", text)
     if not m:
         return None
     day, month_raw, year = m.groups()
@@ -222,7 +222,7 @@ def fetch_detail(url, title=None):
             return None
         ident = None
         if title:
-            m = re.search(r"Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+            m = re.search("\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
             if m:
                 ident = f"{m.group(1)}/{m.group(2)}"
         if ident:
@@ -246,7 +246,7 @@ def fetch_detail(url, title=None):
     # supersession note, e.g. title says "puvodne stanovisko CHJ c. 5/2018"
     replaces_ident = None
     if title:
-        m2 = re.search(r"p[uÅ¯]vodn[Äe][^0-9]{0,40}Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+        m2 = re.search("p[u\u016f]vodn[\u011be][^0-9]{0,40}\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
         if m2:
             replaces_ident = f"{m2.group(1)}/{m2.group(2)}"
     return {
@@ -366,10 +366,10 @@ def import_new_documents(conn):
                 existing.add(item["slug"])
                 continue
             own_is_current = True
-            m_own = re.search(r"č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", item["title"], re.I)
+            m_own = re.search("\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", item["title"], re.I)
             if m_own:
                 own_num, own_year = m_own.group(1), m_own.group(2)
-                pat_own = r"p[uů]vodn[ěe][^0-9]{0,40}č\.?\s*" + re.escape(own_num) + r"\s*/\s*" + re.escape(own_year)
+                pat_own = "p[u\u016f]vodn[\u011be][^0-9]{0,40}\u010d\\.?\\s*" + re.escape(own_num) + "\\s*/\\s*" + re.escape(own_year)
                 with conn.cursor() as cur0:
                     cur0.execute(
                         "select 1 from documents where source = %s and title ~* %s limit 1",
@@ -406,7 +406,7 @@ def import_new_documents(conn):
                 if detail.get("replaces_ident"):
                     print(f"SUPERSEDES: {item['title']} -> marking c. {detail['replaces_ident']} as historical")
                     old_num, old_year = detail["replaces_ident"].split("/")
-                    pat = r"Ä\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
+                    pat = "\u010d\\.?\\s*" + re.escape(old_num) + "\\s*/\\s*" + re.escape(old_year)
                     cur.execute(
                         """
                         update documents set is_current = false
