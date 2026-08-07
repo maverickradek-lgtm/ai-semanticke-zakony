@@ -62,7 +62,7 @@ REQUEST_DELAY_SECONDS = float(os.environ.get("REQUEST_DELAY_SECONDS", "2"))
 MAX_CONSECUTIVE_QUOTA_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_QUOTA_FAILURES", "1"))
 
 # Tvrdy strop na celkovy cas behu (v sekundach), aby skript vzdy skoncil
-# cistě sam - misto aby ho zabil az GitHub Actions 60min timeout uprostred
+# cistÄ sam - misto aby ho zabil az GitHub Actions 60min timeout uprostred
 # prace. Necha rezervu pod 60 min na checkout/instalaci zavislosti.
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 
@@ -130,7 +130,7 @@ def embed_text(text, gemini_key, task_type="RETRIEVAL_DOCUMENT"):
 
 def fetch_pending_chunks(limit):
     # Vola RPC misto primeho dotazu na tabulku, protoze poradi zpracovani
-    # uz neni proste "created_at asc" - upřednostnuje dokumenty s vyssi
+    # uz neni proste "created_at asc" - upÅednostnuje dokumenty s vyssi
     # embed_priority (par nejdulezitejsich aktualnich zakonu, napr. obcansky
     # zakonik) a preskakuji se dokumenty se skip_embedding = true (stare
     # jednorazove novely, jejichz obsah uz je vstrebany v aktualnim zneni
@@ -140,31 +140,47 @@ def fetch_pending_chunks(limit):
     # razeni (nejnizsi priorita/nejnovejsi useky prvni), aby se oba behy co
     # nejmin prekryvaly a nedelaly zbytecne duplicitni praci.
     if DOC_TYPE_FILTER:
+        for attempt in range(5):
+            r = SESSION.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_by_doctype",
+                headers={
+                    "apikey": SERVICE_KEY,
+                    "Authorization": f"Bearer {SERVICE_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"p_doc_type": DOC_TYPE_FILTER, "p_limit": limit},
+                timeout=60,
+            )
+            if r.status_code >= 500:
+                wait = 10 * (attempt + 1)
+                log(f"   fetch_pending_chunks chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
+        log("   fetch_pending_chunks (by_doctype) selhalo po 5 pokusech (opakovane 5xx), vzdavam se pro tento beh, dalsi beh bude pokracovat od stejneho mista...")
+        return []
+
+    for attempt in range(5):
         r = SESSION.post(
-            f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_by_doctype",
+            f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_prioritized",
             headers={
                 "apikey": SERVICE_KEY,
                 "Authorization": f"Bearer {SERVICE_KEY}",
                 "Content-Type": "application/json",
             },
-            json={"p_doc_type": DOC_TYPE_FILTER, "p_limit": limit},
+            json={"p_limit": limit, "p_ascending": REVERSE_ORDER},
             timeout=60,
         )
+        if r.status_code >= 500:
+            wait = 10 * (attempt + 1)
+            log(f"   fetch_pending_chunks chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
+            time.sleep(wait)
+            continue
         r.raise_for_status()
         return r.json()
-
-    r = SESSION.post(
-        f"{SUPABASE_URL}/rest/v1/rpc/get_pending_chunks_prioritized",
-        headers={
-            "apikey": SERVICE_KEY,
-            "Authorization": f"Bearer {SERVICE_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={"p_limit": limit, "p_ascending": REVERSE_ORDER},
-        timeout=60,
-    )
-    r.raise_for_status()
-    return r.json()
+    log("   fetch_pending_chunks selhalo po 5 pokusech (opakovane 5xx), vzdavam se pro tento beh, dalsi beh bude pokracovat od stejneho mista...")
+    return []
 
 
 def fetch_document_titles(document_ids):
@@ -223,7 +239,7 @@ def main():
 
     while remaining > 0 and not quota_exhausted and not time_exhausted:
         if time.time() - start_time > TIME_BUDGET_SECONDS:
-            log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan - koncim cistě, zbytek doplni zitrejsi beh.")
+            log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan - koncim cistÄ, zbytek doplni zitrejsi beh.")
             time_exhausted = True
             break
 
@@ -238,7 +254,7 @@ def main():
 
         for c in chunks:
             if time.time() - start_time > TIME_BUDGET_SECONDS:
-                log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan uprostred davky - koncim cistě, zbytek doplni zitrejsi beh.")
+                log(f"Casovy rozpocet ({TIME_BUDGET_SECONDS}s) vycerpan uprostred davky - koncim cistÄ, zbytek doplni zitrejsi beh.")
                 time_exhausted = True
                 break
 
