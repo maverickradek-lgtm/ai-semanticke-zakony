@@ -25,10 +25,10 @@ jobs:
 
       - name: Sync MF metodiky (import + embedding)
         env:
-          NEON_MF_DB_URL: \${{ secrets.NEON_MF_DB_URL }}
-          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          MAX_NEW_DOCS_PER_RUN: \${{ github.event.inputs.max_new_docs || '40' }}
+          NEON_MF_DB_URL: ${{ secrets.NEON_MF_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAX_NEW_DOCS_PER_RUN: ${{ github.event.inputs.max_new_docs || '40' }}
           TIME_BUDGET_SECONDS: "3000"
           START_YEAR: "2015"
         run: python scripts/sync_mf_metodiky.py
