@@ -255,6 +255,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="jiny_predpis" checked> Jiný předpis</label>
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="rozhodnuti_uohs" checked> Rozhodnutí ÚOHS</label>
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="duvodova_zprava" checked> Důvodová zpráva</label>
+<label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" class="qtf-item" value="metodika" checked> Metodika</label>
 </div>
 
 
@@ -336,6 +337,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <button type="button" class="chip" data-value="jiny_predpis">Jiný předpis</button>
 <button type="button" class="chip" data-value="rozhodnuti_uohs">Rozhodnutí ÚOHS</button>
 <button type="button" class="chip" data-value="duvodova_zprava">Důvodová zpráva</button>
+<button type="button" class="chip" data-value="metodika">Metodika</button>
 </div>
 <input type="hidden" id="db-type-filter" value="">
 <button id="btn-db-search" class="secondary">Hledat</button>
@@ -1161,12 +1163,13 @@ let dbTotalPages = 1;
 const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
+if (t === 'metodika') return 'Metodiky CHJ';
 const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
 return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava'];
+const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika'];
 const el = $('db-stats');
 el.textContent = 'Načítám…';
 const results = await Promise.all(types.map(async t => {
@@ -1174,6 +1177,7 @@ if (SECOND_DB_DOC_TYPES.has(t)) {
 const r = await supabaseNs.rpc('count_documents_by_type', { p_doc_type: t });
 return { count: r.error ? 0 : (r.data || 0) };
 }
+if (t === 'metodika') { try { const r = await callFn('metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
 }));
 const total = results.reduce((s, r) => s + (r.count || 0), 0);
@@ -1188,12 +1192,21 @@ list.textContent = 'Načítám…';
 const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
+const useNeon = typeFilter === 'metodika';
 let data, error, count;
 if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
 const rpcRes = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: typeFilter, p_search: search || null, p_limit: DB_PAGE_SIZE, p_offset: off });
 if (rpcRes.error) { data = null; error = rpcRes.error; count = 0; }
 else { data = rpcRes.data.data; error = null; count = rpcRes.data.count; }
+} else if (useNeon) {
+const off = page * DB_PAGE_SIZE;
+try {
+const r = await callFn('metodiky-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
+data = r.data; error = null; count = r.count;
+} catch (e) {
+data = null; error = e; count = 0;
+}
 } else {
 let query = supabase
     .from('documents')
@@ -1219,7 +1232,9 @@ return;
 }
 list.innerHTML = '';
 const embedStatusMap = new Map();
-if (data && data.length) {
+if (useNeon) {
+data.forEach(d => embedStatusMap.set(d.id, { total: d.chunk_total || 0, embedded: d.chunk_embedded || 0 }));
+} else if (data && data.length) {
 const { data: statusRows } = await supabase.rpc('get_chunk_embedding_status', { p_document_ids: data.map(x => x.id) });
 for (const s of (statusRows || [])) embedStatusMap.set(s.document_id, s);
 }
@@ -1267,7 +1282,7 @@ badge.style.color = 'var(--warn)';
 badge.textContent = `částečně (${st.embedded}/${st.total})`;
 }
 actions.appendChild(badge);
-if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding)) {
+if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika') {
 const prioLabel = document.createElement('label');
 prioLabel.className = 'small muted';
 prioLabel.style.display = 'flex'; prioLabel.style.alignItems = 'center'; prioLabel.style.gap = '4px';
@@ -1282,7 +1297,7 @@ prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
 }
-if (currentProfile && currentProfile.is_admin) {
+if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika') {
 const topLabel = document.createElement('label');
 topLabel.className = 'small muted';
 topLabel.style.marginLeft = '8px';
