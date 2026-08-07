@@ -31,6 +31,7 @@ import re
 import time
 from datetime import datetime
 from io import BytesIO
+from docx import Document
 
 import requests
 from bs4 import BeautifulSoup
@@ -104,6 +105,7 @@ def ensure_schema(conn):
                 url text not null,
                 pdf_url text,
                 published_date date,
+        is_current boolean not null default true,
                 fetched_at timestamptz default now(),
                 created_at timestamptz default now(),
                 unique(source, external_id)
@@ -173,12 +175,12 @@ CZECH_MONTHS = {
 
 
 def _strip_diacritics(s):
-    table = str.maketrans("Ã¡ÄÄÃ©ÄÃ­ÅÃ³ÅÅ¡Å¥ÃºÅ¯Ã½Å¾", "acdeeinorstuuyz")
+    table = str.maketrans("ÃÂ¡ÃÂÃÂÃÂ©ÃÂÃÂ­ÃÂÃÂ³ÃÂÃÂ¡ÃÂ¥ÃÂºÃÂ¯ÃÂ½ÃÂ¾", "acdeeinorstuuyz")
     return s.lower().translate(table)
 
 
 def parse_czech_date(text):
-    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-ZÃ¡-Å¾Ã-Å½]+)\.?\s*(\d{4})", text)
+    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-ZÃÂ¡-ÃÂ¾ÃÂ-ÃÂ½]+)\.?\s*(\d{4})", text)
     if not m:
         return None
     day, month_raw, year = m.groups()
@@ -200,33 +202,56 @@ def fetch_detail(url, title=None):
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     article = soup.find("article") or soup
-    # NOTE: PDF attachment links live OUTSIDE <article> on mf.gov.cz detail
-    # pages (in a .b-download quick-box and a "Dokumenty ke stazeni" archive
-    # list), so we must search the whole page, not just the article tag.
-    pdf_candidates = []
-    for a in soup.find_all("a", href=True):
-        if re.search(r"\.pdf($|\?)", a["href"], re.I):
-            href = a["href"] if a["href"].startswith("http") else BASE_URL + a["href"]
-            pdf_candidates.append((href, a.get_text(" ", strip=True)))
-    pdf_link = None
-    if pdf_candidates:
+    # NOTE: attachment links (PDF and DOCX) live OUTSIDE <article> on
+    # mf.gov.cz detail pages (in a .b-download quick-box and a "Dokumenty ke
+    # stazeni" archive list), so we must search the whole page, not just the
+    # article tag.
+    def _collect(ext_regex):
+        out = []
+        for a in soup.find_all("a", href=True):
+            if re.search(ext_regex, a["href"], re.I):
+                href = a["href"] if a["href"].startswith("http") else BASE_URL + a["href"]
+                out.append((href, a.get_text(" ", strip=True)))
+        return out
+
+    def _pick(candidates):
+        if not candidates:
+            return None
         ident = None
         if title:
             m = re.search(r"č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
             if m:
                 ident = f"{m.group(1)}/{m.group(2)}"
         if ident:
-            for href, text in pdf_candidates:
+            for href, text in candidates:
                 if ident in text.replace(" ", ""):
-                    pdf_link = href
-                    break
-        if not pdf_link:
-            # fall back to the last pdf on the page: observed pattern is
-            # superseded/older versions listed first, current version last
-            pdf_link = pdf_candidates[-1][0]
+                    return href
+        # fall back to the last match on the page: observed pattern is
+        # superseded/older versions listed first, current version last
+        return candidates[-1][0]
+
+    pdf_link = _pick(_collect(r"\.pdf($|\?)"))
+    docx_link = _pick(_collect(r"\.docx($|\?)"))
+    if pdf_link:
+        file_url, file_kind = pdf_link, "pdf"
+    elif docx_link:
+        file_url, file_kind = docx_link, "docx"
+    else:
+        file_url, file_kind = None, None
     date_el_text = article.get_text(" ", strip=True)
     published = parse_czech_date(date_el_text)
-    return {"pdf_url": pdf_link, "published_date": published}
+    # supersession note, e.g. title says "puvodne stanovisko CHJ c. 5/2018"
+    replaces_ident = None
+    if title:
+        m2 = re.search(r"p[uů]vodn[ěe][^0-9]{0,40}č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+        if m2:
+            replaces_ident = f"{m2.group(1)}/{m2.group(2)}"
+    return {
+        "pdf_url": file_url,
+        "file_kind": file_kind,
+        "published_date": published,
+        "replaces_ident": replaces_ident,
+    }
 
 
 def extract_pdf_text(pdf_bytes):
@@ -239,6 +264,17 @@ def extract_pdf_text(pdf_bytes):
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def extract_docx_text(docx_bytes):
+    doc = Document(BytesIO(docx_bytes))
+    parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if cell.text and cell.text.strip():
+                    parts.append(cell.text.strip())
+    return "\n".join(parts).strip()
 
 
 def split_into_chunks(text, max_chars=MAX_CHARS_PER_CHUNK):
@@ -309,15 +345,18 @@ def import_new_documents(conn):
                 print(f"WARN: fetch_detail({item['url']}) failed: {e}")
                 continue
             if not detail["pdf_url"]:
-                print(f"SKIP (no pdf): {item['title']}")
+                print(f"SKIP (no pdf/docx): {item['title']}")
                 existing.add(item["slug"])
                 continue
             try:
-                pdf_resp = requests.get(detail["pdf_url"], timeout=60)
-                pdf_resp.raise_for_status()
-                text = extract_pdf_text(pdf_resp.content)
+                file_resp = requests.get(detail["pdf_url"], timeout=60)
+                file_resp.raise_for_status()
+                if detail.get("file_kind") == "docx":
+                    text = extract_docx_text(file_resp.content)
+                else:
+                    text = extract_pdf_text(file_resp.content)
             except Exception as e:
-                print(f"WARN: pdf fetch/extract failed for {item['title']}: {e}")
+                print(f"WARN: file fetch/extract failed for {item['title']}: {e}")
                 continue
             if not text:
                 print(f"SKIP (empty text): {item['title']}")
@@ -347,6 +386,17 @@ def import_new_documents(conn):
                     conn.commit()
                     continue
                 doc_id = row[0]
+                if detail.get("replaces_ident"):
+                    old_num, old_year = detail["replaces_ident"].split("/")
+                    pat = r"č\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
+                    cur.execute(
+                        """
+                        update documents set is_current = false
+                        where source = %s and is_current = true and id != %s
+                          and title ~* %s
+                        """,
+                        ("mf_chj", doc_id, pat),
+                    )
                 for i, ctext in enumerate(chunk_texts):
                     heading = item["title"] if i == 0 else f"{item['title']} (pokracovani {i + 1})"
                     cur.execute(
