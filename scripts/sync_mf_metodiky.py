@@ -178,12 +178,12 @@ CZECH_MONTHS = {
 
 
 def _strip_diacritics(s):
-    table = str.maketrans("ÃÂÃÂ¡ÃÂÃÂÃÂÃÂÃÂÃÂ©ÃÂÃÂÃÂÃÂ­ÃÂÃÂÃÂÃÂ³ÃÂÃÂÃÂÃÂ¡ÃÂÃÂ¥ÃÂÃÂºÃÂÃÂ¯ÃÂÃÂ½ÃÂÃÂ¾", "acdeeinorstuuyz")
+    table = str.maketrans("ÃÂÃÂÃÂÃÂ¡ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ­ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ³ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¡ÃÂÃÂÃÂÃÂ¥ÃÂÃÂÃÂÃÂºÃÂÃÂÃÂÃÂ¯ÃÂÃÂÃÂÃÂ½ÃÂÃÂÃÂÃÂ¾", "acdeeinorstuuyz")
     return s.lower().translate(table)
 
 
 def parse_czech_date(text):
-    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-ZÃÂÃÂ¡-ÃÂÃÂ¾ÃÂÃÂ-ÃÂÃÂ½]+)\.?\s*(\d{4})", text)
+    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-ZÃÂÃÂÃÂÃÂ¡-ÃÂÃÂÃÂÃÂ¾ÃÂÃÂÃÂÃÂ-ÃÂÃÂÃÂÃÂ½]+)\.?\s*(\d{4})", text)
     if not m:
         return None
     day, month_raw, year = m.groups()
@@ -222,7 +222,7 @@ def fetch_detail(url, title=None):
             return None
         ident = None
         if title:
-            m = re.search(r"Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+            m = re.search(r"ÃÂ\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
             if m:
                 ident = f"{m.group(1)}/{m.group(2)}"
         if ident:
@@ -246,7 +246,7 @@ def fetch_detail(url, title=None):
     # supersession note, e.g. title says "puvodne stanovisko CHJ c. 5/2018"
     replaces_ident = None
     if title:
-        m2 = re.search(r"p[uÅ¯]vodn[Äe][^0-9]{0,40}Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+        m2 = re.search(r"p[uÃÂ¯]vodn[ÃÂe][^0-9]{0,40}ÃÂ\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
         if m2:
             replaces_ident = f"{m2.group(1)}/{m2.group(2)}"
     return {
@@ -390,8 +390,9 @@ def import_new_documents(conn):
                     continue
                 doc_id = row[0]
                 if detail.get("replaces_ident"):
+                    print(f"SUPERSEDES: {item['title']} -> marking c. {detail['replaces_ident']} as historical")
                     old_num, old_year = detail["replaces_ident"].split("/")
-                    pat = r"Ä\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
+                    pat = r"ÃÂ\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
                     cur.execute(
                         """
                         update documents set is_current = false
