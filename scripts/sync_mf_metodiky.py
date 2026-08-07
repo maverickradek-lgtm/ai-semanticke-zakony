@@ -173,12 +173,12 @@ CZECH_MONTHS = {
 
 
 def _strip_diacritics(s):
-    table = str.maketrans("áčďéěíňóřšťúůýž", "acdeeinorstuuyz")
+    table = str.maketrans("Ã¡ÄÄÃ©ÄÃ­ÅÃ³ÅÅ¡Å¥ÃºÅ¯Ã½Å¾", "acdeeinorstuuyz")
     return s.lower().translate(table)
 
 
 def parse_czech_date(text):
-    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-Zá-žÁ-Ž]+)\.?\s*(\d{4})", text)
+    m = re.search(r"(\d{1,2})\.?\s*(\d{1,2}|[a-zA-ZÃ¡-Å¾Ã-Å½]+)\.?\s*(\d{4})", text)
     if not m:
         return None
     day, month_raw, year = m.groups()
@@ -195,16 +195,35 @@ def parse_czech_date(text):
         return None
 
 
-def fetch_detail(url):
+def fetch_detail(url, title=None):
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     article = soup.find("article") or soup
-    pdf_link = None
-    for a in article.find_all("a", href=True):
+    # NOTE: PDF attachment links live OUTSIDE <article> on mf.gov.cz detail
+    # pages (in a .b-download quick-box and a "Dokumenty ke stazeni" archive
+    # list), so we must search the whole page, not just the article tag.
+    pdf_candidates = []
+    for a in soup.find_all("a", href=True):
         if re.search(r"\.pdf($|\?)", a["href"], re.I):
-            pdf_link = a["href"] if a["href"].startswith("http") else BASE_URL + a["href"]
-            break
+            href = a["href"] if a["href"].startswith("http") else BASE_URL + a["href"]
+            pdf_candidates.append((href, a.get_text(" ", strip=True)))
+    pdf_link = None
+    if pdf_candidates:
+        ident = None
+        if title:
+            m = re.search(r"č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+            if m:
+                ident = f"{m.group(1)}/{m.group(2)}"
+        if ident:
+            for href, text in pdf_candidates:
+                if ident in text.replace(" ", ""):
+                    pdf_link = href
+                    break
+        if not pdf_link:
+            # fall back to the last pdf on the page: observed pattern is
+            # superseded/older versions listed first, current version last
+            pdf_link = pdf_candidates[-1][0]
     date_el_text = article.get_text(" ", strip=True)
     published = parse_czech_date(date_el_text)
     return {"pdf_url": pdf_link, "published_date": published}
@@ -285,7 +304,7 @@ def import_new_documents(conn):
             if item["slug"] in existing:
                 continue
             try:
-                detail = fetch_detail(item["url"])
+                detail = fetch_detail(item["url"], title=item.get("title"))
             except requests.RequestException as e:
                 print(f"WARN: fetch_detail({item['url']}) failed: {e}")
                 continue
