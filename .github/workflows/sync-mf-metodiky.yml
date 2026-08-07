@@ -1,0 +1,34 @@
+name: Sync MF metodiky (CHJ) - Neon DB
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_new_docs:
+        description: "Max. pocet novych dokumentu k importu v tomto behu"
+        default: "40"
+  schedule:
+    - cron: "0 4 1 * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Sync MF metodiky (import + embedding)
+        env:
+          NEON_MF_DB_URL: \${{ secrets.NEON_MF_DB_URL }}
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAX_NEW_DOCS_PER_RUN: \${{ github.event.inputs.max_new_docs || '40' }}
+          TIME_BUDGET_SECONDS: "3000"
+          START_YEAR: "2015"
+        run: python scripts/sync_mf_metodiky.py
