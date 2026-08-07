@@ -222,7 +222,7 @@ def fetch_detail(url, title=None):
             return None
         ident = None
         if title:
-            m = re.search(r"č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+            m = re.search(r"Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
             if m:
                 ident = f"{m.group(1)}/{m.group(2)}"
         if ident:
@@ -246,7 +246,7 @@ def fetch_detail(url, title=None):
     # supersession note, e.g. title says "puvodne stanovisko CHJ c. 5/2018"
     replaces_ident = None
     if title:
-        m2 = re.search(r"p[uů]vodn[ěe][^0-9]{0,40}č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
+        m2 = re.search(r"p[uÅ¯]vodn[Äe][^0-9]{0,40}Ä\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", title, re.I)
         if m2:
             replaces_ident = f"{m2.group(1)}/{m2.group(2)}"
     return {
@@ -365,12 +365,25 @@ def import_new_documents(conn):
                 print(f"SKIP (empty text): {item['title']}")
                 existing.add(item["slug"])
                 continue
+            own_is_current = True
+            m_own = re.search(r"č\.?\s*(\d+[a-z]?)\s*/\s*(\d{4})", item["title"], re.I)
+            if m_own:
+                own_num, own_year = m_own.group(1), m_own.group(2)
+                pat_own = r"p[uů]vodn[ěe][^0-9]{0,40}č\.?\s*" + re.escape(own_num) + r"\s*/\s*" + re.escape(own_year)
+                with conn.cursor() as cur0:
+                    cur0.execute(
+                        "select 1 from documents where source = %s and title ~* %s limit 1",
+                        ("mf_chj", pat_own),
+                    )
+                    if cur0.fetchone():
+                        own_is_current = False
+                        print(f"SUPERSEDED-ON-IMPORT: {item['title']} already replaced by a newer document")
             chunk_texts = split_into_chunks(text)
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    insert into documents (source, series, external_id, title, url, pdf_url, published_date)
-                    values (%s, %s, %s, %s, %s, %s, %s)
+                    insert into documents (source, series, external_id, title, url, pdf_url, published_date, is_current)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s)
                     on conflict (source, external_id) do nothing
                     returning id;
                     """,
@@ -382,6 +395,7 @@ def import_new_documents(conn):
                         item["url"],
                         detail["pdf_url"],
                         detail["published_date"],
+                        own_is_current,
                     ),
                 )
                 row = cur.fetchone()
@@ -392,7 +406,7 @@ def import_new_documents(conn):
                 if detail.get("replaces_ident"):
                     print(f"SUPERSEDES: {item['title']} -> marking c. {detail['replaces_ident']} as historical")
                     old_num, old_year = detail["replaces_ident"].split("/")
-                    pat = r"č\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
+                    pat = r"Ä\.?\s*" + re.escape(old_num) + r"\s*/\s*" + re.escape(old_year)
                     cur.execute(
                         """
                         update documents set is_current = false
