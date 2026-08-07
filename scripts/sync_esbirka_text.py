@@ -165,24 +165,24 @@ def find_valid_citace():
     today = date.today().isoformat()
     valid = {}
     count = 0
-    for item in ijson.items(stream, "položky.item"):
+    for item in ijson.items(stream, "poloÅ¾ky.item"):
         count += 1
         if count % 10000 == 0:
             log(f"  ...prosel {count} zaznamu metadat")
-        if item.get("cis-esb-typ-právní-akt-položka") != "PRAVPRED":
+        if item.get("cis-esb-typ-prÃ¡vnÃ­-akt-poloÅ¾ka") != "PRAVPRED":
             continue
-        if item.get("metadata-datum-zrušení"):
+        if item.get("metadata-datum-zruÅ¡enÃ­"):
             continue
-        ucinnost_do = item.get("metadata-datum-účinnosti-do")
+        ucinnost_do = item.get("metadata-datum-ÃºÄinnosti-do")
         if ucinnost_do and ucinnost_do <= today:
             continue
         cit = item.get("akt-citace") or item.get("metadata-citace")
         if not cit:
             continue
-        subtype = item.get("cis-esb-podtyp-právní-akt-položka")
+        subtype = item.get("cis-esb-podtyp-prÃ¡vnÃ­-akt-poloÅ¾ka")
         valid[cit] = {
             "doc_type": SUBTYPE_TO_DOCTYPE.get(subtype, "jiny_predpis"),
-            "title": item.get("metadata-název") or item.get("akt-název-vyhlášený") or cit,
+            "title": item.get("metadata-nÃ¡zev") or item.get("akt-nÃ¡zev-vyhlÃ¡Å¡enÃ½") or cit,
         }
     log(f"Nalezeno {len(valid)} aktualne platnych pravnich predpisu (z {count} zaznamu historie)")
     return valid
@@ -194,7 +194,7 @@ def find_acts(valid_citace):
     wanted = set(valid_citace.keys())
     found = {}
     count = 0
-    for item in ijson.items(stream, "položky.item"):
+    for item in ijson.items(stream, "poloÅ¾ky.item"):
         count += 1
         if count % 10000 == 0:
             log(f"  ...prosel {count} zaznamu katalogu aktu")
@@ -208,7 +208,7 @@ def find_acts(valid_citace):
     return found
 
 def current_version_iri(act):
-    posledni = act.get("právní-akt-znění-poslední") or {}
+    posledni = act.get("prÃ¡vnÃ­-akt-znÄnÃ­-poslednÃ­") or {}
     return posledni.get("iri")
 
 def scan_version_fragments(version_iris):
@@ -220,7 +220,7 @@ def scan_version_fragments(version_iris):
     all_fragments = {v: [] for v in version_iris}
 
     count = 0
-    for item in ijson.items(stream, "položky.item"):
+    for item in ijson.items(stream, "poloÅ¾ky.item"):
         count += 1
         if count % 1_000_000 == 0:
             log(f"  ...prosel {count} zaznamu 003")
@@ -246,7 +246,7 @@ def scan_version_fragments(version_iris):
                 "hierarchie_hex": hierarchie_hex,
             })
         cit = item.get("zn\u011bn\u00ed-fragment-citace")
-        if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
+        if cit and re.fullmatch(r"Â§\s*\d+[a-z]?", cit.strip()):
             section_nodes[v].append({
                 "iri": iri,
                 "citace": cit,
@@ -276,7 +276,7 @@ def fetch_fragment_texts(all_fragment_ids):
     stream = fetch_gunzip_stream("004PravniAktFragment.json.gz")
     texts = {}
     count = 0
-    for item in ijson.items(stream, "položky.item"):
+    for item in ijson.items(stream, "poloÅ¾ky.item"):
         count += 1
         if count % 1000000 == 0:
             log(f"  ...prosel {count} zaznamu 004")
@@ -293,21 +293,29 @@ def fetch_fragment_texts(all_fragment_ids):
 def supabase_upsert(table, rows, on_conflict):
     if not rows:
         return []
-    r = SESSION.post(
-        f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={on_conflict}",
-        headers={
-            "apikey": SERVICE_KEY,
-            "Authorization": f"Bearer {SERVICE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=representation",
-        },
-        json=rows,
-        timeout=120,
-    )
-    if not r.ok:
-        log("Supabase chyba:", r.status_code, r.text[:500])
-        r.raise_for_status()
-    return r.json()
+    for attempt in range(5):
+        r = SESSION.post(
+            f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={on_conflict}",
+            headers={
+                "apikey": SERVICE_KEY,
+                "Authorization": f"Bearer {SERVICE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=representation",
+            },
+            json=rows,
+            timeout=120,
+        )
+        if r.status_code >= 500:
+            wait = 10 * (attempt + 1)
+            log(f"   supabase_upsert chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
+            time.sleep(wait)
+            continue
+        if not r.ok:
+            log("Supabase chyba:", r.status_code, r.text[:500])
+            r.raise_for_status()
+        return r.json()
+    log("   supabase_upsert selhalo po 5 pokusech (opakovane 5xx), vzdavam se...")
+    raise RuntimeError(f"supabase_upsert({table}) selhalo po 5 pokusech na opakovane 5xx chyby")
 
 def get_or_create_source():
     rows = supabase_upsert(
@@ -558,7 +566,7 @@ def main():
                 "external_id": citace,
                 "doc_type": meta["doc_type"],
                 "title": title,
-                "issuer": "Sbírka zákonů",
+                "issuer": "SbÃ­rka zÃ¡konÅ¯",
                 "url": doc_url,
                 "status": "platny",
                 "version_iri": version_iri,
