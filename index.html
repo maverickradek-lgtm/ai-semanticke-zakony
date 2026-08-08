@@ -338,6 +338,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <button type="button" class="chip" data-value="rozhodnuti_uohs">Rozhodnutí ÚOHS</button>
 <button type="button" class="chip" data-value="duvodova_zprava">Důvodová zpráva</button>
 <button type="button" class="chip" data-value="metodika">Metodika</button>
+<button type="button" class="chip" data-value="metodika_fs">Metodiky FS</button>
 </div>
 <input type="hidden" id="db-type-filter" value="">
 <button id="btn-db-search" class="secondary">Hledat</button>
@@ -1164,12 +1165,13 @@ const DB_PAGE_SIZE = 30;
 
 function docTypeLabel(t) {
 if (t === 'metodika') return 'Metodiky CHJ';
+if (t === 'metodika_fs') return 'Metodiky FS';
 const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
 return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika'];
+const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika','metodika_fs'];
 const el = $('db-stats');
 el.textContent = 'Načítám…';
 const results = await Promise.all(types.map(async t => {
@@ -1178,6 +1180,7 @@ const r = await supabaseNs.rpc('count_documents_by_type', { p_doc_type: t });
 return { count: r.error ? 0 : (r.data || 0) };
 }
 if (t === 'metodika') { try { const r = await callFn('metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
+if (t === 'metodika_fs') { try { const r = await callFn('fs-metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
 }));
 const total = results.reduce((s, r) => s + (r.count || 0), 0);
@@ -1193,6 +1196,7 @@ const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
 const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
 const useNeon = typeFilter === 'metodika';
+const useNeonFs = typeFilter === 'metodika_fs';
 let data, error, count;
 if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
@@ -1206,6 +1210,18 @@ const r = await callFn('metodiky-db', { action: 'list', search: search || null, 
 data = r.data; error = null; count = r.count;
 } catch (e) {
 data = null; error = e; count = 0;
+}
+} else if (useNeonFs) {
+const off = page * DB_PAGE_SIZE;
+try {
+const r = await callFn('fs-metodiky-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
+data = r.data;
+error = null;
+count = r.count;
+} catch (e) {
+data = null;
+error = e;
+count = 0;
 }
 } else {
 let query = supabase
@@ -1232,7 +1248,7 @@ return;
 }
 list.innerHTML = '';
 const embedStatusMap = new Map();
-if (useNeon) {
+if (useNeon || useNeonFs) {
 data.forEach(d => embedStatusMap.set(d.id, { total: d.chunk_total || 0, embedded: d.chunk_embedded || 0 }));
 } else if (data && data.length) {
 const { data: statusRows } = await supabase.rpc('get_chunk_embedding_status', { p_document_ids: data.map(x => x.id) });
@@ -1282,7 +1298,7 @@ badge.style.color = 'var(--warn)';
 badge.textContent = `částečně (${st.embedded}/${st.total})`;
 }
 actions.appendChild(badge);
-if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika') {
+if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs') {
 const prioLabel = document.createElement('label');
 prioLabel.className = 'small muted';
 prioLabel.style.display = 'flex'; prioLabel.style.alignItems = 'center'; prioLabel.style.gap = '4px';
@@ -1297,7 +1313,7 @@ prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
 }
-if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika') {
+if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs') {
 const topLabel = document.createElement('label');
 topLabel.className = 'small muted';
 topLabel.style.marginLeft = '8px';
