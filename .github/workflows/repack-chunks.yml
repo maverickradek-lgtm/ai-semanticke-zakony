@@ -4,7 +4,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: db-heavy-primary
+  group: repack-chunks-solo
   cancel-in-progress: false
 
 jobs:
