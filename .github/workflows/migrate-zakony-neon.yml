@@ -1,0 +1,39 @@
+name: Migrace zakonu do Neon shardu (kopie, bez mazani ze zdroje)
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_limit:
+        description: "Kolik dokumentu max. za jeden beh"
+        required: false
+        default: "300"
+
+concurrency:
+  group: migrate-zakony-neon-solo
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run migration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          BATCH_LIMIT: ${{ github.event.inputs.batch_limit }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/migrate_zakony_to_neon.py
