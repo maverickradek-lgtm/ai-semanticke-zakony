@@ -1,0 +1,41 @@
+name: Embedding zakonu ve 4 Neon shardech
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_per_shard:
+        description: "Kolik chunku max. na jeden shard v jedne davce"
+        required: false
+        default: "20"
+  schedule:
+    - cron: "0 5 * * *"
+
+concurrency:
+  group: embed-zakony-neon-solo
+  cancel-in-progress: false
+
+jobs:
+  embed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Embed pending chunky (4 shardy)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          BATCH_PER_SHARD: ${{ github.event.inputs.batch_per_shard || '20' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/embed_zakony_neon.py
