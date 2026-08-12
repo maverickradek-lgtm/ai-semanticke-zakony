@@ -316,7 +316,7 @@ def mark_migrated(doc_id):
                 "Prefer": "return=minimal",
             },
             params={"id": f"eq.{doc_id}"},
-            json={"content_hash": "__migrated_to_neon__"},
+            json={"content_hash": "__migrated_to_neon__", "skip_embedding": True},
             timeout=30,
         )
         if r.status_code >= 500:
