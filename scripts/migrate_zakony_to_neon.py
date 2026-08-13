@@ -7,6 +7,29 @@ Tento skript je POUZE KOPIROVACI - necte se z hlavni Supabase (funguje i behem
 read-only vypadku, viz pg_repack_space_requirement_incident), zapisuje do
 prislusneho Neonu. NEMAZE nic ze zdroje - smazani ze zdroje je samostatny,
 zamerny krok az po overeni, ze data v Neonu sedi.
+
+Pokud je nastavena env. promenna TARGET_SHARD (jedna z klicu NEON_URLS), skript
+zpracovava POUZE dokumenty spadajici do tohoto shardu (filtr na predpis_rok
+primo v Supabase dotazu) a otevira spojeni jen na tento jeden shard. To
+umoznuje spustit 4 nezavisle, paralelni behy (jeden na shard) v ramci jednoho
+GitHub Actions triggeru (viz .github/workflows/migrate-zakony-neon.yml, matrix
+strategy) - shardy se navzajem nemohou prekryvat (kazdy dokument patri prave
+do jednoho roku, tedy prave do jednoho shardu), takze paralelni beh je bezpecny
+bez rizika duplicitni prace.
+
+Pokud TARGET_SHARD neni nastaveny, skript zpracovava vsechny zakony a kazdy
+routuje do prislusneho shardu sam (puvodni sekvencni rezim, uzitecne pro
+rucni/lokalni spusteni bez matrix paralelizace).
+
+Vykonnostni optimalizace oproti puvodni verzi:
+- chunky jednoho dokumentu se zapisuji jednim davkovym INSERTem (execute_values)
+  a jednim commitem, misto 1 insert + 1 commit na kazdy chunk zvlast (u velkych
+  dokumentu jako obcansky zakonik s 1581 chunky to byl hlavni zdroj zbytecnych
+  sitovych round-tripu do Neonu)
+- oznaceni "migrovano" v Supabase se posila davkove (1 PATCH na ~25 dokumentu)
+  misto 1 PATCH na kazdy dokument
+- chybejici obsah chunku ze Storage (content_migrated=true) se stahuje soubezne
+  (nekolik pozadavku najednou), ne jeden po druhem
 """
 
 import os
@@ -15,11 +38,15 @@ import time
 import psycopg2
 import psycopg2.extras
 import requests
+from concurrent.futures import ThreadPoolExecutor
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-BATCH_LIMIT = int(os.environ.get("BATCH_LIMIT", "300"))
+BATCH_LIMIT = int(os.environ.get("BATCH_LIMIT", "100000"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
+TARGET_SHARD = os.environ.get("TARGET_SHARD") or None
+MARK_BATCH_SIZE = 25
+STORAGE_FETCH_WORKERS = 8
 
 NEON_URLS = {
     "do1997": os.environ["NEON_ZAKONY_DO1997_DB_URL"],
@@ -27,6 +54,9 @@ NEON_URLS = {
     "2008_2020": os.environ["NEON_ZAKONY_2008_2020_DB_URL"],
     "2021_dosud": os.environ["NEON_ZAKONY_2021_DOSUD_DB_URL"],
 }
+
+if TARGET_SHARD and TARGET_SHARD not in NEON_URLS:
+    raise RuntimeError(f"Neznamy TARGET_SHARD={TARGET_SHARD!r}, ocekavam jeden z {list(NEON_URLS)}")
 
 START_TIME = time.time()
 SESSION = requests.Session()
@@ -51,6 +81,21 @@ def bucket_for_year(rok):
     if rok <= 2020:
         return "2008_2020"
     return "2021_dosud"
+
+
+def shard_query_params(shard_key):
+    """Filtr na predpis_rok pro dany shard. PostgREST AND na stejnem sloupci
+    se dela opakovanim stejneho klice - requests to posle jako 2 samostatne
+    query parametry, kdyz je hodnota list."""
+    if shard_key == "do1997":
+        return {"predpis_rok": "lte.1997"}
+    if shard_key == "1998_2007":
+        return {"predpis_rok": ["gte.1998", "lte.2007"]}
+    if shard_key == "2008_2020":
+        return {"predpis_rok": ["gte.2008", "lte.2020"]}
+    if shard_key == "2021_dosud":
+        return {"or": "(predpis_rok.gte.2021,predpis_rok.is.null)"}
+    raise RuntimeError(f"Neznamy shard {shard_key!r}")
 
 
 def parse_embedding(raw):
@@ -108,8 +153,22 @@ def fetch_storage_content(chunk_id):
     raise RuntimeError(f"fetch_storage_content({chunk_id}) selhalo po 5 pokusech")
 
 
-def get_migrated_marker_table_name():
-    return "zakon_neon_migration_marker"
+def fetch_storage_contents_parallel(chunk_ids):
+    """Stahne obsah vice chunku ze Storage soubezne (misto jednoho po druhem) -
+    hlavni prinos u velkych dokumentu, kde hodne chunku ma content jen ve
+    Storage (content_migrated=true)."""
+    results = {}
+    if not chunk_ids:
+        return results
+    with ThreadPoolExecutor(max_workers=STORAGE_FETCH_WORKERS) as ex:
+        futures = {ex.submit(fetch_storage_content, cid): cid for cid in chunk_ids}
+        for fut, cid in futures.items():
+            try:
+                results[cid] = fut.result()
+            except Exception as e:
+                log(f"   WARN fetch_storage_content({cid}) selhalo: {e}")
+                results[cid] = None
+    return results
 
 
 def get_already_migrated_ids():
@@ -291,21 +350,44 @@ def upsert_document(conn, doc):
     conn.commit()
 
 
-def upsert_chunk(conn, chunk):
+def upsert_chunks_batch(conn, chunks):
+    """Vlozi/aktualizuje vsechny chunky jednoho dokumentu jednim davkovym
+    dotazem (execute_values) a jednim commitem, misto puvodniho 1 insert +
+    1 commit na kazdy chunk zvlast."""
+    if not chunks:
+        return
+    rows = [
+        (
+            c["id"],
+            c["document_id"],
+            c["chunk_index"],
+            c["heading"],
+            c["content"],
+            c["embedding"],
+            c["created_at"],
+        )
+        for c in chunks
+    ]
     with conn.cursor() as cur:
-        cur.execute(
+        psycopg2.extras.execute_values(
+            cur,
             """
             insert into chunks (id, document_id, chunk_index, heading, content, embedding, created_at)
-            values (%(id)s, %(document_id)s, %(chunk_index)s, %(heading)s, %(content)s, %(embedding)s, %(created_at)s)
+            values %s
             on conflict (id) do update set
               heading = excluded.heading, content = excluded.content, embedding = excluded.embedding
             """,
-            chunk,
+            rows,
+            page_size=500,
         )
     conn.commit()
 
 
-def mark_migrated(doc_id):
+def mark_migrated_batch(doc_ids):
+    """Oznaci vice dokumentu jako migrovane jednim PATCH pozadavkem (misto
+    jednoho pozadavku na kazdy dokument zvlast)."""
+    if not doc_ids:
+        return
     for attempt in range(5):
         r = SESSION.patch(
             f"{SUPABASE_URL}/rest/v1/documents",
@@ -315,7 +397,7 @@ def mark_migrated(doc_id):
                 "Content-Type": "application/json",
                 "Prefer": "return=minimal",
             },
-            params={"id": f"eq.{doc_id}"},
+            params={"id": f"in.({','.join(doc_ids)})"},
             json={"content_hash": "__migrated_to_neon__", "skip_embedding": True},
             timeout=30,
         )
@@ -323,10 +405,10 @@ def mark_migrated(doc_id):
             time.sleep(5 * (attempt + 1))
             continue
         if r.status_code == 400 or r.status_code >= 300:
-            log(f"   mark_migrated({doc_id}) neuspesne: {r.status_code} {r.text[:200]} (DB je mozna read-only, pokracuji bez oznaceni)")
+            log(f"   mark_migrated_batch({len(doc_ids)} dok.) neuspesne: {r.status_code} {r.text[:200]} (DB je mozna read-only, pokracuji bez oznaceni)")
             return
         return
-    log(f"   mark_migrated({doc_id}) selhalo po 5 pokusech, pokracuji bez oznaceni")
+    log(f"   mark_migrated_batch({len(doc_ids)} dok.) selhalo po 5 pokusech, pokracuji bez oznaceni")
 
 
 def ensure_conn(neon_conns, key):
@@ -353,7 +435,10 @@ def ensure_conn(neon_conns, key):
 
 
 def main():
-    log("Zacinam migraci zakonu do Neon shardu (kopie, bez mazani ze zdroje)...")
+    if TARGET_SHARD:
+        log(f"Zacinam migraci zakonu do Neon shardu (jen shard={TARGET_SHARD}, paralelni rezim)...")
+    else:
+        log("Zacinam migraci zakonu do Neon shardu (vsechny shardy, sekvencni rezim)...")
 
     already_migrated = set()
     try:
@@ -362,32 +447,36 @@ def main():
     except Exception as e:
         log(f"Nepodarilo se nacist marker seznam ({e}), pokracuji bez neho (muze zpusobit duplicitni praci, ne chybu)")
 
+    shard_keys = [TARGET_SHARD] if TARGET_SHARD else list(NEON_URLS.keys())
     neon_conns = {}
-    for key, url in NEON_URLS.items():
-        conn = psycopg2.connect(url, connect_timeout=15)
+    for key in shard_keys:
+        conn = psycopg2.connect(NEON_URLS[key], connect_timeout=15)
         ensure_schema(conn)
         neon_conns[key] = conn
         log(f"Schema pripraveno v Neon shardu: {key}")
 
     offset = 0
-    page = 100
+    page = 200
     processed = 0
     migrated_docs = 0
     migrated_chunks = 0
+    pending_marks = []
+
+    base_params = {
+        "select": "id,source_id,external_id,doc_type,title,issuer,decision_date,effective_date,url,status,content_hash,fetched_at,created_at,updated_at,skip_embedding,embed_priority,version_iri,valid_from,valid_until,superseded_by,is_current,explains_document_id,predpis_cislo,predpis_rok",
+        "doc_type": "eq.zakon",
+        "order": "embed_priority.desc,id.asc",
+    }
+    if TARGET_SHARD:
+        base_params.update(shard_query_params(TARGET_SHARD))
 
     while time_left() > 60:
-        docs = sb_get(
-            "documents",
-            {
-                "select": "id,source_id,external_id,doc_type,title,issuer,decision_date,effective_date,url,status,content_hash,fetched_at,created_at,updated_at,skip_embedding,embed_priority,version_iri,valid_from,valid_until,superseded_by,is_current,explains_document_id,predpis_cislo,predpis_rok",
-                "doc_type": "eq.zakon",
-                "order": "embed_priority.desc,id.asc",
-                "limit": str(page),
-                "offset": str(offset),
-            },
-        )
+        params = dict(base_params)
+        params["limit"] = str(page)
+        params["offset"] = str(offset)
+        docs = sb_get("documents", params)
         if not docs:
-            log("Vsechny zakony projity, konec.")
+            log("Vsechny zakony (v tomto rozsahu) projity, konec.")
             break
 
         offset += page
@@ -402,7 +491,7 @@ def main():
 
             processed += 1
             rok = doc.get("predpis_rok")
-            target_key = bucket_for_year(rok)
+            target_key = TARGET_SHARD or bucket_for_year(rok)
 
             try:
                 conn = ensure_conn(neon_conns, target_key)
@@ -418,12 +507,15 @@ def main():
                     },
                 )
 
+                missing_ids = [ch["id"] for ch in chunks if ch.get("content") is None and ch.get("content_migrated")]
+                storage_contents = fetch_storage_contents_parallel(missing_ids)
+
+                chunk_rows = []
                 for ch in chunks:
                     content = ch.get("content")
                     if content is None and ch.get("content_migrated"):
-                        content = fetch_storage_content(ch["id"])
-                    upsert_chunk(
-                        conn,
+                        content = storage_contents.get(ch["id"])
+                    chunk_rows.append(
                         {
                             "id": ch["id"],
                             "document_id": ch["document_id"],
@@ -432,12 +524,18 @@ def main():
                             "content": content,
                             "embedding": parse_embedding(ch.get("embedding")),
                             "created_at": ch.get("created_at"),
-                        },
+                        }
                     )
-                    migrated_chunks += 1
 
-                mark_migrated(doc["id"])
+                upsert_chunks_batch(conn, chunk_rows)
+                migrated_chunks += len(chunk_rows)
+
+                pending_marks.append(doc["id"])
                 migrated_docs += 1
+
+                if len(pending_marks) >= MARK_BATCH_SIZE:
+                    mark_migrated_batch(pending_marks)
+                    pending_marks = []
 
                 if migrated_docs % 25 == 0:
                     log(f"...{migrated_docs} dokumentu / {migrated_chunks} chunku migrovano (shard: {target_key})")
@@ -454,6 +552,9 @@ def main():
         if migrated_docs >= BATCH_LIMIT:
             log(f"Dosazen BATCH_LIMIT={BATCH_LIMIT}, koncim tento beh (dalsi beh bude pokracovat).")
             break
+
+    if pending_marks:
+        mark_migrated_batch(pending_marks)
 
     for conn in neon_conns.values():
         conn.close()
