@@ -69,8 +69,15 @@ def sb_get(path, params):
 
 
 def get_migrated_candidates():
-    """Vsechny zakony v Supabase, ktere migracni skript uz oznacil jako
-    prekopirovane do Neonu (content_hash marker).
+    """Vsechny zakony A duvodove zpravy v Supabase, ktere migracni skript uz
+    oznacil jako prekopirovane do Neonu (content_hash marker).
+
+    Duvodove zpravy se sem zapocitavaji od 2026-08-13 spolu se zakony -
+    migrate_zakony_to_neon.py je ted take migruje (do stejneho shardu jako
+    zakon, ktery vysvetluji), prave aby se casem uvolnil i jejich FK odkaz
+    (explains_document_id) na svuj zakon a ten zakon se pak mohl bezpecne
+    smazat - viz get_referenced_document_ids() a pamet
+    explains_document_id_fk_bug_2026-08-13.
 
     Musi se strankovat (offset/limit v cyklu) - jeden pozadavek s
     limit=10000 se ticha orizne na Supabase/PostgREST vychozi max-rows
@@ -86,7 +93,7 @@ def get_migrated_candidates():
             "documents",
             {
                 "select": "id,external_id,title,predpis_rok",
-                "doc_type": "eq.zakon",
+                "doc_type": "in.(zakon,duvodova_zprava)",
                 "content_hash": "eq.__migrated_to_neon__",
                 "order": "id.asc",
                 "limit": str(page),
