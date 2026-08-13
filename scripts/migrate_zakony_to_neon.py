@@ -329,6 +329,29 @@ def mark_migrated(doc_id):
     log(f"   mark_migrated({doc_id}) selhalo po 5 pokusech, pokracuji bez oznaceni")
 
 
+def ensure_conn(neon_conns, key):
+    """Vrati zive spojeni pro dany shard - pokud stavajici spojeni zemrelo
+    (napr. Neon uspal necinny branch behem dlouheho zpracovani jineho
+    dokumentu), tise ho znovu naveze misto toho, aby dal chybu u kazdeho
+    dalsiho dokumentu smerujiciho do tohoto shardu."""
+    conn = neon_conns.get(key)
+    if conn is not None and conn.closed == 0:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("select 1")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    conn = psycopg2.connect(NEON_URLS[key], connect_timeout=15)
+    ensure_schema(conn)
+    neon_conns[key] = conn
+    log(f"   (znovu navazano spojeni na shard {key})")
+    return conn
+
+
 def main():
     log("Zacinam migraci zakonu do Neon shardu (kopie, bez mazani ze zdroje)...")
 
@@ -380,9 +403,9 @@ def main():
             processed += 1
             rok = doc.get("predpis_rok")
             target_key = bucket_for_year(rok)
-            conn = neon_conns[target_key]
 
             try:
+                conn = ensure_conn(neon_conns, target_key)
                 upsert_document(conn, doc)
 
                 chunks = sb_get(
