@@ -64,39 +64,77 @@ def sb_get(path, params):
 
 def get_migrated_candidates():
     """Vsechny zakony v Supabase, ktere migracni skript uz oznacil jako
-    prekopirovane do Neonu (content_hash marker)."""
-    rows = sb_get(
-        "documents",
-        {
-            "select": "id,external_id,title,predpis_rok",
-            "doc_type": "eq.zakon",
-            "content_hash": "eq.__migrated_to_neon__",
-            "limit": "10000",
-        },
-    )
-    return {r["id"]: r for r in rows}
+    prekopirovane do Neonu (content_hash marker).
+
+    Musi se strankovat (offset/limit v cyklu) - jeden pozadavek s
+    limit=10000 se ticha orizne na Supabase/PostgREST vychozi max-rows
+    (obvykle 1000), takze bez strankovani by skript videl jen nahodnou
+    prvni tisicovku migrovanych dokumentu a zbytek (klidne tisice
+    skutecne bezpecnych kandidatu) by proste nikdy neposoudil - ne ze by
+    je zamitl, jen by o nich nevedel."""
+    all_rows = {}
+    page = 1000
+    offset = 0
+    while True:
+        rows = sb_get(
+            "documents",
+            {
+                "select": "id,external_id,title,predpis_rok",
+                "doc_type": "eq.zakon",
+                "content_hash": "eq.__migrated_to_neon__",
+                "order": "id.asc",
+                "limit": str(page),
+                "offset": str(offset),
+            },
+        )
+        if not rows:
+            break
+        for r in rows:
+            all_rows[r["id"]] = r
+        offset += page
+        if len(rows) < page:
+            break
+    return all_rows
 
 
 def get_supabase_chunk_counts(doc_ids):
     """Aktualni pocet chunku v Supabase pro dane dokumenty (pro integritni
-    porovnani s Neonem tesne pred smazanim)."""
+    porovnani s Neonem tesne pred smazanim).
+
+    Stejny duvod jako u get_migrated_candidates(): jeden pozadavek se
+    "vysokym limitem" se muze ticha orizout na Supabase/PostgREST vychozi
+    max-rows. Zde je to o to zakeznejsi, ze by to VZDY vypadalo bezpecne
+    (nizsi napocitany pocet chunku => dokument se jen presko ci jako
+    "nesedi pocet", nikdy se omylem nesmaze) - ale zbytecne by to
+    blokovalo skutecne bezpecne kandidaty. Proto se i tady stranku uje
+    pres offset v cyklu, dokud dana davka doku mentu neni cela nactena."""
     counts = {}
     if not doc_ids:
         return counts
-    page = 100
+    doc_batch = 20
     ids = list(doc_ids)
-    for i in range(0, len(ids), page):
-        batch = ids[i : i + page]
-        rows = sb_get(
-            "chunks",
-            {
-                "select": "document_id",
-                "document_id": f"in.({','.join(batch)})",
-                "limit": "50000",
-            },
-        )
-        for r in rows:
-            counts[r["document_id"]] = counts.get(r["document_id"], 0) + 1
+    for i in range(0, len(ids), doc_batch):
+        batch = ids[i : i + doc_batch]
+        page = 1000
+        offset = 0
+        while True:
+            rows = sb_get(
+                "chunks",
+                {
+                    "select": "document_id",
+                    "document_id": f"in.({','.join(batch)})",
+                    "order": "id.asc",
+                    "limit": str(page),
+                    "offset": str(offset),
+                },
+            )
+            if not rows:
+                break
+            for r in rows:
+                counts[r["document_id"]] = counts.get(r["document_id"], 0) + 1
+            offset += page
+            if len(rows) < page:
+                break
     return counts
 
 
