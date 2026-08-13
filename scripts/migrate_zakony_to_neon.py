@@ -30,6 +30,16 @@ Vykonnostni optimalizace oproti puvodni verzi:
   misto 1 PATCH na kazdy dokument
 - chybejici obsah chunku ze Storage (content_migrated=true) se stahuje soubezne
   (nekolik pozadavku najednou), ne jeden po druhem
+
+Po hlavni migraci zakonu skript navic migruje i doc_type='duvodova_zprava'
+dokumenty (viz migrate_duvodove_zpravy() nize) - DULEZITE kvuli FK
+explains_document_id: dokud duvodova zprava v Supabase odkazuje na zakon,
+uklidovy skript (verify_and_cleanup_zakony_supabase.py) ten zakon nikdy
+nesmi smazat (jinak by FK constraint shodil cele davkove mazani - viz
+pamet explains_document_id_fk_bug_2026-08-13). Jakmile se duvodova zprava
+premigruje do STEJNEHO Neon shardu jako jeji zakon (a nasledne se smaze i
+ona sama ze Supabase), odkaz v Supabase zmizi a zakon se muze konecne take
+bezpecne smazat.
 """
 
 import os
@@ -124,7 +134,7 @@ def sb_get(path, params):
         )
         if r.status_code >= 500:
             wait = 10 * (attempt + 1)
-            log(f"   sb_get {path} chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
+            log(f"  sb_get {path} chyba {r.status_code}, cekam {wait}s a zkusim znovu...")
             time.sleep(wait)
             continue
         r.raise_for_status()
@@ -166,17 +176,17 @@ def fetch_storage_contents_parallel(chunk_ids):
             try:
                 results[cid] = fut.result()
             except Exception as e:
-                log(f"   WARN fetch_storage_content({cid}) selhalo: {e}")
+                log(f"  WARN fetch_storage_content({cid}) selhalo: {e}")
                 results[cid] = None
     return results
 
 
-def get_already_migrated_ids():
+def get_already_migrated_ids(doc_type="zakon"):
     rows = sb_get(
         "documents",
         {
             "select": "id",
-            "doc_type": "eq.zakon",
+            "doc_type": f"eq.{doc_type}",
             "content_hash": "eq.__migrated_to_neon__",
         },
     )
@@ -191,43 +201,43 @@ def ensure_schema(conn):
             create extension if not exists pgcrypto;
 
             create table if not exists documents (
-              id uuid primary key,
-              source_id uuid not null,
-              external_id text not null,
-              doc_type text not null,
-              title text not null,
-              issuer text,
-              decision_date date,
-              effective_date date,
-              url text,
-              status text,
-              content_hash text,
-              fetched_at timestamptz not null default now(),
-              created_at timestamptz not null default now(),
-              updated_at timestamptz not null default now(),
-              skip_embedding boolean not null default false,
-              embed_priority integer not null default 0,
-              version_iri text,
-              valid_from date,
-              valid_until date,
-              superseded_by uuid references documents(id),
-              is_current boolean not null default true,
-              explains_document_id uuid references documents(id),
-              predpis_cislo integer,
-              predpis_rok integer,
-              has_pending_chunks boolean not null default true,
-              unique (source_id, external_id)
+                id uuid primary key,
+                source_id uuid not null,
+                external_id text not null,
+                doc_type text not null,
+                title text not null,
+                issuer text,
+                decision_date date,
+                effective_date date,
+                url text,
+                status text,
+                content_hash text,
+                fetched_at timestamptz not null default now(),
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now(),
+                skip_embedding boolean not null default false,
+                embed_priority integer not null default 0,
+                version_iri text,
+                valid_from date,
+                valid_until date,
+                superseded_by uuid references documents(id),
+                is_current boolean not null default true,
+                explains_document_id uuid references documents(id),
+                predpis_cislo integer,
+                predpis_rok integer,
+                has_pending_chunks boolean not null default true,
+                unique (source_id, external_id)
             );
 
             create table if not exists chunks (
-              id uuid primary key,
-              document_id uuid not null references documents(id) on delete cascade,
-              chunk_index integer not null,
-              heading text,
-              content text,
-              embedding vector(256),
-              created_at timestamptz not null default now(),
-              unique (document_id, chunk_index)
+                id uuid primary key,
+                document_id uuid not null references documents(id) on delete cascade,
+                chunk_index integer not null,
+                heading text,
+                content text,
+                embedding vector(256),
+                created_at timestamptz not null default now(),
+                unique (document_id, chunk_index)
             );
 
             create index if not exists documents_doc_type_idx on documents(doc_type);
@@ -239,75 +249,75 @@ def ensure_schema(conn):
             create index if not exists chunks_pending_embed_idx on chunks(document_id) where embedding is null;
             create index if not exists chunks_pending_embed_created_idx on chunks(created_at) where embedding is null;
             create index if not exists documents_pending_embed_priority_idx
-              on documents(embed_priority desc nulls last, created_at)
-              where skip_embedding = false and has_pending_chunks = true;
+                on documents(embed_priority desc nulls last, created_at)
+                where skip_embedding = false and has_pending_chunks = true;
 
             create or replace function chunks_maintain_has_pending_chunks()
             returns trigger language plpgsql as $f$
             declare v_still_pending boolean;
             begin
-              if tg_op = 'INSERT' then
-                if new.embedding is null then
-                  update documents set has_pending_chunks = true where id = new.document_id and has_pending_chunks = false;
+                if tg_op = 'INSERT' then
+                    if new.embedding is null then
+                        update documents set has_pending_chunks = true where id = new.document_id and has_pending_chunks = false;
+                    end if;
+                    return new;
+                elsif tg_op = 'UPDATE' then
+                    if new.embedding is not null and old.embedding is null then
+                        select exists(select 1 from chunks where document_id = new.document_id and embedding is null and id <> new.id) into v_still_pending;
+                        if not v_still_pending then update documents set has_pending_chunks = false where id = new.document_id; end if;
+                    elsif new.embedding is null and old.embedding is not null then
+                        update documents set has_pending_chunks = true where id = new.document_id and has_pending_chunks = false;
+                    end if;
+                    return new;
+                elsif tg_op = 'DELETE' then
+                    if old.embedding is null then
+                        select exists(select 1 from chunks where document_id = old.document_id and embedding is null) into v_still_pending;
+                        if not v_still_pending then update documents set has_pending_chunks = false where id = old.document_id; end if;
+                    end if;
+                    return old;
                 end if;
-                return new;
-              elsif tg_op = 'UPDATE' then
-                if new.embedding is not null and old.embedding is null then
-                  select exists(select 1 from chunks where document_id = new.document_id and embedding is null and id <> new.id) into v_still_pending;
-                  if not v_still_pending then update documents set has_pending_chunks = false where id = new.document_id; end if;
-                elsif new.embedding is null and old.embedding is not null then
-                  update documents set has_pending_chunks = true where id = new.document_id and has_pending_chunks = false;
-                end if;
-                return new;
-              elsif tg_op = 'DELETE' then
-                if old.embedding is null then
-                  select exists(select 1 from chunks where document_id = old.document_id and embedding is null) into v_still_pending;
-                  if not v_still_pending then update documents set has_pending_chunks = false where id = old.document_id; end if;
-                end if;
-                return old;
-              end if;
-              return null;
+                return null;
             end;
             $f$;
 
             drop trigger if exists trg_chunks_maintain_has_pending on chunks;
             create trigger trg_chunks_maintain_has_pending
-            after insert or update of embedding or delete on chunks
-            for each row execute function chunks_maintain_has_pending_chunks();
+                after insert or update of embedding or delete on chunks
+                for each row execute function chunks_maintain_has_pending_chunks();
 
             create or replace function get_pending_chunks_prioritized(p_limit integer, p_ascending boolean default false)
             returns table(id uuid, heading text, content text, document_id uuid)
             language plpgsql stable as $f$
             begin
-              if p_ascending then
-                return query select c.id, c.heading, c.content, c.document_id
-                  from chunks c join documents d on d.id = c.document_id
-                  where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
-                  order by d.embed_priority asc nulls last, d.created_at desc limit p_limit;
-              else
-                return query select c.id, c.heading, c.content, c.document_id
-                  from chunks c join documents d on d.id = c.document_id
-                  where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
-                  order by d.embed_priority desc nulls last, d.created_at asc limit p_limit;
-              end if;
+                if p_ascending then
+                    return query select c.id, c.heading, c.content, c.document_id
+                    from chunks c join documents d on d.id = c.document_id
+                    where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
+                    order by d.embed_priority asc nulls last, d.created_at desc limit p_limit;
+                else
+                    return query select c.id, c.heading, c.content, c.document_id
+                    from chunks c join documents d on d.id = c.document_id
+                    where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
+                    order by d.embed_priority desc nulls last, d.created_at asc limit p_limit;
+                end if;
             end;
             $f$;
 
             create or replace function match_chunks(query_embedding vector, match_count integer default 8,
-              min_similarity double precision default 0.55, p_as_of date default null)
+                min_similarity double precision default 0.55, p_as_of date default null)
             returns table(chunk_id uuid, document_id uuid, heading text, content text, similarity double precision,
-              doc_title text, doc_url text, doc_type text)
+                doc_title text, doc_url text, doc_type text)
             language plpgsql stable as $f$
             begin
-              return query
-              select c.id, c.document_id, c.heading, c.content,
-                     (1 - (c.embedding <=> query_embedding))::float, d.title, d.url, d.doc_type
-              from chunks c join documents d on d.id = c.document_id
-              where case when p_as_of is null then d.is_current = true
-                         else (d.valid_from is null or d.valid_from <= p_as_of)
-                          and (d.valid_until is null or p_as_of <= d.valid_until) end
-                and (1 - (c.embedding <=> query_embedding)) >= min_similarity
-              order by c.embedding <=> query_embedding limit match_count;
+                return query
+                select c.id, c.document_id, c.heading, c.content,
+                    (1 - (c.embedding <=> query_embedding))::float, d.title, d.url, d.doc_type
+                from chunks c join documents d on d.id = c.document_id
+                where case when p_as_of is null then d.is_current = true
+                    else (d.valid_from is null or d.valid_from <= p_as_of)
+                    and (d.valid_until is null or p_as_of <= d.valid_until) end
+                    and (1 - (c.embedding <=> query_embedding)) >= min_similarity
+                order by c.embedding <=> query_embedding limit match_count;
             end;
             $f$;
             """
@@ -320,30 +330,30 @@ def upsert_document(conn, doc):
         cur.execute(
             """
             insert into documents (
-              id, source_id, external_id, doc_type, title, issuer, decision_date,
-              effective_date, url, status, content_hash, fetched_at, created_at,
-              updated_at, skip_embedding, embed_priority, version_iri, valid_from,
-              valid_until, superseded_by, is_current, explains_document_id,
-              predpis_cislo, predpis_rok
+                id, source_id, external_id, doc_type, title, issuer, decision_date,
+                effective_date, url, status, content_hash, fetched_at, created_at,
+                updated_at, skip_embedding, embed_priority, version_iri, valid_from,
+                valid_until, superseded_by, is_current, explains_document_id,
+                predpis_cislo, predpis_rok
             ) values (
-              %(id)s, %(source_id)s, %(external_id)s, %(doc_type)s, %(title)s,
-              %(issuer)s, %(decision_date)s, %(effective_date)s, %(url)s,
-              %(status)s, %(content_hash)s, %(fetched_at)s, %(created_at)s,
-              %(updated_at)s, %(skip_embedding)s, %(embed_priority)s,
-              %(version_iri)s, %(valid_from)s, %(valid_until)s, %(superseded_by)s,
-              %(is_current)s, %(explains_document_id)s, %(predpis_cislo)s,
-              %(predpis_rok)s
+                %(id)s, %(source_id)s, %(external_id)s, %(doc_type)s, %(title)s,
+                %(issuer)s, %(decision_date)s, %(effective_date)s, %(url)s,
+                %(status)s, %(content_hash)s, %(fetched_at)s, %(created_at)s,
+                %(updated_at)s, %(skip_embedding)s, %(embed_priority)s,
+                %(version_iri)s, %(valid_from)s, %(valid_until)s, %(superseded_by)s,
+                %(is_current)s, %(explains_document_id)s, %(predpis_cislo)s,
+                %(predpis_rok)s
             )
             on conflict (id) do update set
-              title = excluded.title, issuer = excluded.issuer,
-              decision_date = excluded.decision_date, effective_date = excluded.effective_date,
-              url = excluded.url, status = excluded.status, content_hash = excluded.content_hash,
-              updated_at = excluded.updated_at, skip_embedding = excluded.skip_embedding,
-              embed_priority = excluded.embed_priority, version_iri = excluded.version_iri,
-              valid_from = excluded.valid_from, valid_until = excluded.valid_until,
-              superseded_by = excluded.superseded_by, is_current = excluded.is_current,
-              explains_document_id = excluded.explains_document_id,
-              predpis_cislo = excluded.predpis_cislo, predpis_rok = excluded.predpis_rok
+                title = excluded.title, issuer = excluded.issuer,
+                decision_date = excluded.decision_date, effective_date = excluded.effective_date,
+                url = excluded.url, status = excluded.status, content_hash = excluded.content_hash,
+                updated_at = excluded.updated_at, skip_embedding = excluded.skip_embedding,
+                embed_priority = excluded.embed_priority, version_iri = excluded.version_iri,
+                valid_from = excluded.valid_from, valid_until = excluded.valid_until,
+                superseded_by = excluded.superseded_by, is_current = excluded.is_current,
+                explains_document_id = excluded.explains_document_id,
+                predpis_cislo = excluded.predpis_cislo, predpis_rok = excluded.predpis_rok
             """,
             doc,
         )
@@ -375,7 +385,7 @@ def upsert_chunks_batch(conn, chunks):
             insert into chunks (id, document_id, chunk_index, heading, content, embedding, created_at)
             values %s
             on conflict (id) do update set
-              heading = excluded.heading, content = excluded.content, embedding = excluded.embedding
+                heading = excluded.heading, content = excluded.content, embedding = excluded.embedding
             """,
             rows,
             page_size=500,
@@ -405,10 +415,10 @@ def mark_migrated_batch(doc_ids):
             time.sleep(5 * (attempt + 1))
             continue
         if r.status_code == 400 or r.status_code >= 300:
-            log(f"   mark_migrated_batch({len(doc_ids)} dok.) neuspesne: {r.status_code} {r.text[:200]} (DB je mozna read-only, pokracuji bez oznaceni)")
+            log(f"  mark_migrated_batch({len(doc_ids)} dok.) neuspesne: {r.status_code} {r.text[:200]} (DB je mozna read-only, pokracuji bez oznaceni)")
             return
         return
-    log(f"   mark_migrated_batch({len(doc_ids)} dok.) selhalo po 5 pokusech, pokracuji bez oznaceni")
+    log(f"  mark_migrated_batch({len(doc_ids)} dok.) selhalo po 5 pokusech, pokracuji bez oznaceni")
 
 
 def ensure_conn(neon_conns, key):
@@ -430,8 +440,139 @@ def ensure_conn(neon_conns, key):
     conn = psycopg2.connect(NEON_URLS[key], connect_timeout=15)
     ensure_schema(conn)
     neon_conns[key] = conn
-    log(f"   (znovu navazano spojeni na shard {key})")
+    log(f"  (znovu navazano spojeni na shard {key})")
     return conn
+
+
+def migrate_one_document(conn, doc):
+    """Zkopiruje jeden dokument + jeho chunky do dane Neon connection.
+    Sdileno mezi hlavni migraci zakonu a migraci duvodovych zprav."""
+    upsert_document(conn, doc)
+
+    chunks = sb_get(
+        "chunks",
+        {
+            "select": "id,document_id,chunk_index,heading,content,embedding,created_at,content_migrated",
+            "document_id": f"eq.{doc['id']}",
+            "order": "chunk_index.asc",
+            "limit": "2000",
+        },
+    )
+
+    missing_ids = [ch["id"] for ch in chunks if ch.get("content") is None and ch.get("content_migrated")]
+    storage_contents = fetch_storage_contents_parallel(missing_ids)
+
+    chunk_rows = []
+    for ch in chunks:
+        content = ch.get("content")
+        if content is None and ch.get("content_migrated"):
+            content = storage_contents.get(ch["id"])
+        chunk_rows.append(
+            {
+                "id": ch["id"],
+                "document_id": ch["document_id"],
+                "chunk_index": ch["chunk_index"],
+                "heading": ch.get("heading"),
+                "content": content,
+                "embedding": parse_embedding(ch.get("embedding")),
+                "created_at": ch.get("created_at"),
+            }
+        )
+
+    upsert_chunks_batch(conn, chunk_rows)
+    return len(chunk_rows)
+
+
+def get_zakon_years(zakon_ids):
+    """id -> predpis_rok pro dany seznam zakonu, aby se dala urcit cilova
+    shard duvodove zpravy (ta sama nema sve vlastni predpis_rok vyplnene -
+    viz sync_psp_tisky.py)."""
+    years = {}
+    ids = list(zakon_ids)
+    batch = 200
+    for i in range(0, len(ids), batch):
+        chunk_ids = ids[i : i + batch]
+        rows = sb_get(
+            "documents",
+            {"select": "id,predpis_rok", "id": f"in.({','.join(chunk_ids)})"},
+        )
+        for r in rows:
+            years[r["id"]] = r.get("predpis_rok")
+    return years
+
+
+def migrate_duvodove_zpravy(neon_conns):
+    """Migruje doc_type='duvodova_zprava' dokumenty do STEJNEHO Neon shardu
+    jako zakon, ktery vysvetluji (explains_document_id) - jinak by FK
+    constraint v Neonu (kazdy shard je samostatna DB) odkazovala mimo
+    databazi. Dokud duvodova zprava zustava v Supabase a odkazuje na svuj
+    zakon, uklidovy skript ten zakon nesmi smazat (viz
+    explains_document_id_fk_bug_2026-08-13) - jakmile se DZ premigruje sem
+    a pak i ona sama smaze ze Supabase, odkaz zmizi a zakon se muze
+    konecne take uklidit."""
+    dz_docs = sb_get(
+        "documents",
+        {
+            "select": "id,source_id,external_id,doc_type,title,issuer,decision_date,effective_date,url,status,content_hash,fetched_at,created_at,updated_at,skip_embedding,embed_priority,version_iri,valid_from,valid_until,superseded_by,is_current,explains_document_id,predpis_cislo,predpis_rok",
+            "doc_type": "eq.duvodova_zprava",
+            "content_hash": "neq.__migrated_to_neon__",
+            "explains_document_id": "not.is.null",
+            "order": "id.asc",
+            "limit": "3000",
+        },
+    )
+    if not dz_docs:
+        log("Zadne nove duvodove zpravy k migraci.")
+        return 0, 0
+
+    zakon_years = get_zakon_years([d["explains_document_id"] for d in dz_docs])
+
+    migrated_docs = 0
+    migrated_chunks = 0
+    pending_marks = []
+    skipped_zakon_not_ready = 0
+
+    for doc in dz_docs:
+        if time_left() <= 60:
+            break
+        zakon_id = doc["explains_document_id"]
+        rok = zakon_years.get(zakon_id)
+        target_key = bucket_for_year(rok)
+        if TARGET_SHARD and target_key != TARGET_SHARD:
+            continue
+
+        try:
+            conn = ensure_conn(neon_conns, target_key)
+            with conn.cursor() as cur:
+                cur.execute("select 1 from documents where id = %s", (zakon_id,))
+                if cur.fetchone() is None:
+                    # Zakon, ktery tato DZ vysvetluje, jeste v tomto shardu
+                    # neexistuje (jeste nebyl migrovan) - FK by selhala.
+                    # Preskocime, priste (az bude zakon migrovan) to vyjde.
+                    skipped_zakon_not_ready += 1
+                    continue
+
+            n_chunks = migrate_one_document(conn, doc)
+            migrated_chunks += n_chunks
+            pending_marks.append(doc["id"])
+            migrated_docs += 1
+
+            if len(pending_marks) >= MARK_BATCH_SIZE:
+                mark_migrated_batch(pending_marks)
+                pending_marks = []
+        except Exception as e:
+            log(f"CHYBA u duvodove zpravy {doc['id']}: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            continue
+
+    if pending_marks:
+        mark_migrated_batch(pending_marks)
+
+    log(f"Duvodove zpravy: migrovano {migrated_docs} (chunku {migrated_chunks}), preskoceno (zakon jeste nema v shardu) {skipped_zakon_not_ready}")
+    return migrated_docs, migrated_chunks
 
 
 def main():
@@ -442,7 +583,7 @@ def main():
 
     already_migrated = set()
     try:
-        already_migrated = get_already_migrated_ids()
+        already_migrated = get_already_migrated_ids("zakon")
         log(f"Uz drive oznaceno jako migrovano: {len(already_migrated)}")
     except Exception as e:
         log(f"Nepodarilo se nacist marker seznam ({e}), pokracuji bez neho (muze zpusobit duplicitni praci, ne chybu)")
@@ -495,40 +636,8 @@ def main():
 
             try:
                 conn = ensure_conn(neon_conns, target_key)
-                upsert_document(conn, doc)
-
-                chunks = sb_get(
-                    "chunks",
-                    {
-                        "select": "id,document_id,chunk_index,heading,content,embedding,created_at,content_migrated",
-                        "document_id": f"eq.{doc['id']}",
-                        "order": "chunk_index.asc",
-                        "limit": "2000",
-                    },
-                )
-
-                missing_ids = [ch["id"] for ch in chunks if ch.get("content") is None and ch.get("content_migrated")]
-                storage_contents = fetch_storage_contents_parallel(missing_ids)
-
-                chunk_rows = []
-                for ch in chunks:
-                    content = ch.get("content")
-                    if content is None and ch.get("content_migrated"):
-                        content = storage_contents.get(ch["id"])
-                    chunk_rows.append(
-                        {
-                            "id": ch["id"],
-                            "document_id": ch["document_id"],
-                            "chunk_index": ch["chunk_index"],
-                            "heading": ch.get("heading"),
-                            "content": content,
-                            "embedding": parse_embedding(ch.get("embedding")),
-                            "created_at": ch.get("created_at"),
-                        }
-                    )
-
-                upsert_chunks_batch(conn, chunk_rows)
-                migrated_chunks += len(chunk_rows)
+                n_chunks = migrate_one_document(conn, doc)
+                migrated_chunks += n_chunks
 
                 pending_marks.append(doc["id"])
                 migrated_docs += 1
@@ -556,10 +665,18 @@ def main():
     if pending_marks:
         mark_migrated_batch(pending_marks)
 
+    log(f"Zakony hotovo. Zpracovano={processed}, migrovano dokumentu={migrated_docs}, chunku={migrated_chunks}")
+
+    if time_left() > 60:
+        try:
+            migrate_duvodove_zpravy(neon_conns)
+        except Exception as e:
+            log(f"CHYBA pri migraci duvodovych zprav (nekriticke, zakony jsou uz hotove): {e}")
+    else:
+        log("Casovy rozpocet vycerpan, duvodove zpravy tento beh nezpracovavam.")
+
     for conn in neon_conns.values():
         conn.close()
-
-    log(f"Hotovo. Zpracovano={processed}, migrovano dokumentu={migrated_docs}, chunku={migrated_chunks}")
 
 
 if __name__ == "__main__":
