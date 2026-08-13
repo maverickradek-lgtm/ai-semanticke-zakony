@@ -611,7 +611,14 @@ def main():
     if TARGET_SHARD:
         base_params.update(shard_query_params(TARGET_SHARD))
 
-    while time_left() > 60:
+    # Rezervujeme posledních ~5 minut casoveho rozpoctu vyhradne pro
+    # migrate_duvodove_zpravy() nize - pri velkem zbyvajicim poctu zakonu
+    # (BATCH_LIMIT je prakticky bez limitu) by hlavni smycka jinak sama
+    # spotrebovala uplne cely beh a na duvodove zpravy by se nikdy
+    # nedostalo (zjisteno 2026-08-13: 4/4 shardy vycerpaly ~49 z 50 minut
+    # na zakony, dz_migrated zustalo 0 i po celem behu).
+    DZ_RESERVED_SECONDS = 300
+    while time_left() > DZ_RESERVED_SECONDS:
         params = dict(base_params)
         params["limit"] = str(page)
         params["offset"] = str(offset)
@@ -627,7 +634,7 @@ def main():
                 continue
             if migrated_docs >= BATCH_LIMIT:
                 break
-            if time_left() <= 60:
+            if time_left() <= DZ_RESERVED_SECONDS:
                 break
 
             processed += 1
