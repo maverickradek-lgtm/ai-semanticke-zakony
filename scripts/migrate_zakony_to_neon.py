@@ -358,7 +358,7 @@ def main():
             {
                 "select": "id,source_id,external_id,doc_type,title,issuer,decision_date,effective_date,url,status,content_hash,fetched_at,created_at,updated_at,skip_embedding,embed_priority,version_iri,valid_from,valid_until,superseded_by,is_current,explains_document_id,predpis_cislo,predpis_rok",
                 "doc_type": "eq.zakon",
-                "order": "id.asc",
+                "order": "embed_priority.desc,id.asc",
                 "limit": str(page),
                 "offset": str(offset),
             },
