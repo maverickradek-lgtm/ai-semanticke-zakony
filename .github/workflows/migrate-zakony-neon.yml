@@ -4,18 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       batch_limit:
-        description: "Kolik dokumentu max. za jeden beh"
+        description: "Kolik dokumentu max. na shard v jedne davce (prakticky bez limitu, hlida se hlavne casem behu)"
         required: false
-        default: "300"
-
-concurrency:
-  group: migrate-zakony-neon-solo
-  cancel-in-progress: false
+        default: "100000"
+  schedule:
+    - cron: "0 3 * * *"
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [do1997, 1998_2007, 2008_2020, 2021_dosud]
+    concurrency:
+      group: migrate-zakony-neon-${{ matrix.shard }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/requirements.txt
 
-      - name: Run migration
+      - name: Run migration (shard ${{ matrix.shard }})
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -34,6 +39,7 @@ jobs:
           NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
           NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
           NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
-          BATCH_LIMIT: ${{ github.event.inputs.batch_limit }}
+          TARGET_SHARD: ${{ matrix.shard }}
+          BATCH_LIMIT: ${{ github.event.inputs.batch_limit || '100000' }}
           TIME_BUDGET_SECONDS: "3000"
         run: python scripts/migrate_zakony_to_neon.py
