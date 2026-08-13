@@ -135,6 +135,28 @@ def embed_shard_batch(conn, gemini_key, shard_key):
     return done
 
 
+def ensure_conn(neon_conns, key):
+    """Vrati zive spojeni pro dany shard - pokud stavajici spojeni zemrelo
+    (napr. Neon uspal necinny branch behem dlouheho zpracovani jineho
+    shardu), tise ho znovu naveze, misto aby se dany shard omylem oznacil
+    za 'exhausted' jen kvuli spadlemu spojeni."""
+    conn = neon_conns.get(key)
+    if conn is not None and conn.closed == 0:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("select 1")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    conn = psycopg2.connect(NEON_URLS[key], connect_timeout=15)
+    neon_conns[key] = conn
+    log(f"   [{key}] (znovu navazano spojeni)")
+    return conn
+
+
 def main():
     log("Zacinam embedding pending chunku ve 4 Neon shardech zakonu (round-robin)...")
 
@@ -151,26 +173,30 @@ def main():
 
     while time_left() > 30 and not all(exhausted.values()):
         round_num += 1
-        for key, conn in neon_conns.items():
+        for key in list(neon_conns.keys()):
             if exhausted[key] or time_left() <= 30:
                 continue
             try:
+                conn = ensure_conn(neon_conns, key)
                 done = embed_shard_batch(conn, gemini_key, key)
             except Exception as e:
-                log(f"   [{key}] CHYBA behem davky: {e}")
+                log(f"   [{key}] CHYBA behem davky (zkusim znovu pristi kolo): {e}")
                 try:
-                    conn.rollback()
+                    neon_conns[key].rollback()
                 except Exception:
                     pass
-                done = 0
-            totals[key] += done
+                done = -1
+            totals[key] += max(done, 0)
             if done == 0:
                 exhausted[key] = True
         if round_num % 5 == 0:
             log(f"...kolo {round_num}: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
 
     for conn in neon_conns.values():
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
     grand_total = sum(totals.values())
     log(f"Hotovo. Celkem zembedovano {grand_total} chunku: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
