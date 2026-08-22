@@ -515,7 +515,12 @@ def migrate_duvodove_zpravy(neon_conns):
         {
             "select": "id,source_id,external_id,doc_type,title,issuer,decision_date,effective_date,url,status,content_hash,fetched_at,created_at,updated_at,skip_embedding,embed_priority,version_iri,valid_from,valid_until,superseded_by,is_current,explains_document_id,predpis_cislo,predpis_rok",
             "doc_type": "eq.duvodova_zprava",
-            "content_hash": "neq.__migrated_to_neon__",
+            # POZOR: "neq.__migrated_to_neon__" samo o sobe by vyloucilo i
+            # radky s content_hash IS NULL (SQL: NULL <> 'x' je NULL, ne
+            # true) - a VSECHNY duvodove zpravy maji content_hash NULL
+            # (sync_psp_tisky.py ho nikdy nenastavuje), takze puvodni filtr
+            # vracel 0 kandidatu za kazdych okolnosti. Zjisteno 2026-08-22.
+            "or": "(content_hash.is.null,content_hash.neq.__migrated_to_neon__)",
             "explains_document_id": "not.is.null",
             "order": "id.asc",
             "limit": "3000",
