@@ -527,7 +527,7 @@ const NS_SUPABASE_URL2 = 'https://ejjkyrprdzetxfwlkboa.supabase.co';
 const NS_ANON_KEY2 = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqamt5cnByZHpldHhmd2xrYm9hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzOTczMDIsImV4cCI6MjA5OTk3MzMwMn0.7owC8Bdp6hSsiWZ8EvUnm2lHHxMAeJnxRLvvEzBjzlA';
 const supabaseNs = createClient(NS_SUPABASE_URL2, NS_ANON_KEY2);
 const SECOND_DB_DOC_TYPES = new Set(['judikat','rozhodnuti_uohs']);
-      const ZAKONY_NEON_DOC_TYPES = new Set(['zakon','vyhlaska','narizeni','opatreni','dekret','jiny_predpis','duvodova_zprava']);
+      const ZAKONY_NEON_DOC_TYPES = new Set(['zakon','duvodova_zprava']); // POZOR: vyhlaska/narizeni/opatreni/dekret/jiny_predpis zatim NEJSOU v Neonu migrovany (migrate_zakony_to_neon.py migruje jen doc_type=zakon+duvodova_zprava) - az se migrace rozsiri, pridat je sem
 
 const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove('hidden');
