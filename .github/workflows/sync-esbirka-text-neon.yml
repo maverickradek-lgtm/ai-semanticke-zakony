@@ -1,0 +1,40 @@
+name: Sync e-Sbirka - text primo do Neonu (FAZE A, bez Supabase mezikroku)
+
+# POZOR: schvalne JEN workflow_dispatch, zadny "schedule:" - dokud Radek
+# nerekne, ze chce automaticky cron, tenhle novy pripojeny pipeline
+# zustava spustitelny jen rucne z GitHub Actions UI ("Run workflow").
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-esbirka-text-neon-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run text sync (primo do Neonu)
+        env:
+          # sync_esbirka_text.py a migrate_zakony_to_neon.py se importuji
+          # jako moduly kvuli sdilenym fetch/schema funkcim - oba na
+          # urovni souboru cetou tyto dve promenne, i kdyz tento skript
+          # uz do Supabase samotne nic nezapisuje.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          TIME_BUDGET_SECONDS: "12000"
+        run: python scripts/sync_esbirka_text_neon.py
