@@ -527,6 +527,7 @@ const NS_SUPABASE_URL2 = 'https://ejjkyrprdzetxfwlkboa.supabase.co';
 const NS_ANON_KEY2 = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqamt5cnByZHpldHhmd2xrYm9hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzOTczMDIsImV4cCI6MjA5OTk3MzMwMn0.7owC8Bdp6hSsiWZ8EvUnm2lHHxMAeJnxRLvvEzBjzlA';
 const supabaseNs = createClient(NS_SUPABASE_URL2, NS_ANON_KEY2);
 const SECOND_DB_DOC_TYPES = new Set(['judikat','rozhodnuti_uohs']);
+      const ZAKONY_NEON_DOC_TYPES = new Set(['zakon','vyhlaska','narizeni','opatreni','dekret','jiny_predpis','duvodova_zprava']);
 
 const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove('hidden');
@@ -1197,6 +1198,7 @@ const typeFilter = $('db-type-filter').value;
 const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
 const useNeon = typeFilter === 'metodika';
 const useNeonFs = typeFilter === 'metodika_fs';
+      const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter);
 let data, error, count;
 if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
@@ -1223,7 +1225,15 @@ data = null;
 error = e;
 count = 0;
 }
-} else {
+} else if (useZakonyNeon) {
+      const off = page * DB_PAGE_SIZE;
+      try {
+        const r = await callFn('zakony-db', { action: 'list', doc_type: typeFilter, search: search || null, limit: DB_PAGE_SIZE, offset: off });
+        data = r.data; error = null; count = r.count;
+      } catch (e) {
+        data = null; error = e; count = 0;
+      }
+    } else {
 let query = supabase
     .from('documents')
     .select('id,title,doc_type,issuer,decision_date,url,external_id,embed_priority,is_current', { count: 'exact' })
@@ -1248,7 +1258,7 @@ return;
 }
 list.innerHTML = '';
 const embedStatusMap = new Map();
-if (useNeon || useNeonFs) {
+if (useNeon || useNeonFs || useZakonyNeon) {
 data.forEach(d => embedStatusMap.set(d.id, { total: d.chunk_total || 0, embedded: d.chunk_embedded || 0 }));
 } else if (data && data.length) {
 const { data: statusRows } = await supabase.rpc('get_chunk_embedding_status', { p_document_ids: data.map(x => x.id) });
@@ -1306,9 +1316,15 @@ const prioCheckbox = document.createElement('input');
 prioCheckbox.type = 'checkbox';
 prioCheckbox.checked = (d.embed_priority || 0) > 0;
 prioCheckbox.onchange = async () => {
-const { error } = await supabase.rpc('set_embed_priority', { p_document_id: d.id, p_priority: prioCheckbox.checked });
-if (error) { alert('Chyba: ' + error.message); prioCheckbox.checked = !prioCheckbox.checked; }
-};
+        if (d.shard) {
+          try {
+            await callFn('zakony-db', { action: 'set_priority', document_id: d.id, shard: d.shard, priority: prioCheckbox.checked });
+          } catch (e) { alert('Chyba: ' + e.message); prioCheckbox.checked = !prioCheckbox.checked; }
+        } else {
+          const { error } = await supabase.rpc('set_embed_priority', { p_document_id: d.id, p_priority: prioCheckbox.checked });
+          if (error) { alert('Chyba: ' + error.message); prioCheckbox.checked = !prioCheckbox.checked; }
+        }
+      };
 prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
@@ -1324,9 +1340,15 @@ const topCheckbox = document.createElement('input');
 topCheckbox.type = 'checkbox';
 topCheckbox.checked = (d.embed_priority || 0) >= 300;
 topCheckbox.onchange = async () => {
-const { error } = await supabase.rpc('set_embed_priority_top', { p_document_id: d.id, p_top: topCheckbox.checked });
-if (error) { alert('Chyba: ' + error.message); topCheckbox.checked = !topCheckbox.checked; }
-};
+        if (d.shard) {
+          try {
+            await callFn('zakony-db', { action: 'set_priority_top', document_id: d.id, shard: d.shard, top: topCheckbox.checked });
+          } catch (e) { alert('Chyba: ' + e.message); topCheckbox.checked = !topCheckbox.checked; }
+        } else {
+          const { error } = await supabase.rpc('set_embed_priority_top', { p_document_id: d.id, p_top: topCheckbox.checked });
+          if (error) { alert('Chyba: ' + error.message); topCheckbox.checked = !topCheckbox.checked; }
+        }
+      };
 topLabel.appendChild(topCheckbox);
 topLabel.appendChild(document.createTextNode('TOP priorita'));
 actions.appendChild(topLabel);
