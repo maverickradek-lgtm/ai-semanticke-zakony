@@ -1085,8 +1085,10 @@ btnImport.textContent = 'Importuji…';
 try {
 const result = await callFn('import-predpis-request', { request_id: r.id });
 alert(result.result === 'imported'
-? `Naimportováno: ${result.title} (${result.chunks} §).`
-: 'Předpis nebyl v e-Sbírce nalezen.');
+            ? `Naimportováno: ${result.title} (${result.chunks} §).`
+            : result.result === 'found_elsewhere'
+            ? `Už je v aplikaci - nalezeno v: ${result.source} ("${result.title}").`
+            : 'Předpis nebyl nalezen (ani v e-Sbírce, ani v ostatních databázích).');
 } catch (e) {
 alert('Chyba při importu: ' + e.message);
 }
