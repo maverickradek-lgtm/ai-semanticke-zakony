@@ -155,15 +155,11 @@ def is_letter_spaced(line):
 
 def guess_title(text, fallback):
     lines = [l.strip() for l in text.split(NL)]
-    vec_prefixes = ("Věc:", "věc:")
-    for line in lines:
-        if line.startswith(vec_prefixes):
-            candidate = line.split(":", 1)[1].strip() if ":" in line else line
-            if len(candidate) >= 8:
-                return candidate[:200]
     candidates = []
-    for line in lines[:40]:
+    for line in lines[:60]:
         if len(line) < 15:
+            continue
+        if "..." in line:
             continue
         if is_letter_spaced(line):
             continue
