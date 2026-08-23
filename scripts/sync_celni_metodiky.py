@@ -145,11 +145,22 @@ def extract_pdf_text(pdf_bytes):
     return text.strip()
 
 
+def is_letter_spaced(line):
+    tokens = line.split()
+    if len(tokens) < 3:
+        return False
+    single_char = sum(1 for t in tokens if len(t) == 1)
+    return (single_char / len(tokens)) > 0.5
+
+
 def guess_title(text, fallback):
     for line in text.split(NL):
         line = line.strip()
-        if len(line) >= 8:
-            return line[:200]
+        if len(line) < 8:
+            continue
+        if is_letter_spaced(line):
+            continue
+        return line[:200]
     return fallback
 
 
