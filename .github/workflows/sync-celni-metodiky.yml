@@ -1,0 +1,38 @@
+name: Sync Celni sprava metodiky (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_new_docs:
+        description: "Max novych dokumentu za beh"
+        required: false
+        default: "60"
+  schedule:
+    - cron: "0 5 1 * *"
+
+concurrency:
+  group: sync-celni-metodiky-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run Celni sprava sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_CELNI_DB_URL: ${{ secrets.NEON_CELNI_DB_URL }}
+          MAX_NEW_DOCS_PER_RUN: ${{ inputs.max_new_docs || '60' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/sync_celni_metodiky.py
