@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   embed:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Run embedding backfill (hlavni klic)
         env:
@@ -34,7 +34,7 @@ jobs:
         run: python scripts/sync_esbirka_embed.py
 
   embed_secondary:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Run embedding backfill (druhy, samostatny Gemini klic)
         env:
@@ -57,7 +57,7 @@ jobs:
         run: python scripts/sync_esbirka_embed.py
 
   embed_uohs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Run embedding backfill (vyhrazeny klic pro rozhodnuti UOHS)
         env:
@@ -81,7 +81,7 @@ jobs:
 
 
   embed_judikat:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +91,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Run embedding backfill (vyhrazeny klic pro judikaturu Vrchnich soudu, 2. DB)
         env:
