@@ -11,7 +11,7 @@ on:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Sync FS metodiky (import + embedding)
         env:
