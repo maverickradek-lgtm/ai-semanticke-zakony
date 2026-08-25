@@ -33,7 +33,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
-          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_POOL }}
+          # Znovupouzity jiz existujici Gemini klice (GEMINI_API_KEY_UOHS
+          # zamerne vynechan - beha soubezne na GitHub-hosted runneru v
+          # sync-esbirka-embed.yml (embed_uohs/embed_judikat), aby se
+          # nezdvojnasobila zatez na stejny projekt/kvotu).
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_NS }}"
           MAX_ITEMS: ${{ inputs.max_items || '300' }}
           TIME_BUDGET_SECONDS: "3000"
         run: python scripts/sync_uohs_neon.py
