@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   embed:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
