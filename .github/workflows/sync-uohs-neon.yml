@@ -1,0 +1,39 @@
+name: Sync UOHS (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Max novych rozhodnuti za beh"
+        required: false
+        default: "300"
+  schedule:
+    - cron: "30 4 * * *"
+
+concurrency:
+  group: sync-uohs-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Run UOHS sync (Neon)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
+          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_POOL }}
+          MAX_ITEMS: ${{ inputs.max_items || '300' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/sync_uohs_neon.py
