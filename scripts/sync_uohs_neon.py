@@ -14,7 +14,7 @@ sync_esbirka_embed.py bezici proti Neonu - kazdy Neon pipeline si embedding
 resi sam (stejny vzor jako sync_celni_metodiky.py / sync_fs_metodiky.py).
 
 CUTOFF_DATE je schvalne PEVNE datum (1.10.2016 - ucinnost zakona 134/2016 Sb.
-o zadavani verejnych zakazek), ne posuvne okno posledních N let - jinak by
+o zadavani verejnych zakazek), ne posuvne okno poslednÃ­ch N let - jinak by
 casem zacalo unikat i rozhodnuti z prvnich let noveho zakona, jak by se
 posuvalo "dnes".
 
@@ -98,7 +98,7 @@ def get_gemini_keys():
     """Vraci seznam klicu pro rotaci - pokud je nastaven GEMINI_API_KEY_POOL
     (carkou oddeleny seznam), pouzije se ten (vice klicu = vic denni kvoty
     Gemini API rozprostrene mezi vic ucty). Jinak fallback na jediny admin
-    klic jako doteď."""
+    klic jako doteÄ."""
     if GEMINI_API_KEY_POOL:
         return GEMINI_API_KEY_POOL
     return [get_admin_gemini_key()]
@@ -287,7 +287,6 @@ def import_new_documents(conn):
     too_old = 0
     errors = 0
     for item in items:
-        conn = ensure_conn(conn)
         external_id = item.get("číslo_jednací") or item.get("spisová_značka")
         if not external_id or external_id in existing:
             skipped += 1
@@ -300,8 +299,9 @@ def import_new_documents(conn):
             log("Dosazen MAX_ITEMS=" + str(MAX_ITEMS) + ", koncim (zbytek doplni dalsi beh).")
             break
         if time_left() <= 0:
-            log("Casovy rozpocet vycerpan, koncim cistě (zbytek doplni dalsi beh).")
+            log("Casovy rozpocet vycerpan, koncim cistÄ (zbytek doplni dalsi beh).")
             break
+        conn = ensure_conn(conn)
         try:
             doc_id, n_chunks = upsert_document(conn, item)
             if doc_id:
