@@ -288,9 +288,26 @@ def import_new_documents(conn):
     print("Import done: " + str(new_count) + " new documents")
 
 
+def ensure_conn(conn):
+    if conn is not None and conn.closed == 0:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("select 1")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    new_conn = psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+    print("(znovu navazano spojeni)")
+    return new_conn
+
+
 def embed_pending(conn, gemini_key):
     embedded = 0
     while time_left() > 30:
+        conn = ensure_conn(conn)
         with conn.cursor() as cur:
             cur.execute("select id, content from chunks where embedding is null order by created_at asc limit 20")
             rows = cur.fetchall()
@@ -307,11 +324,13 @@ def embed_pending(conn, gemini_key):
             if not vec:
                 continue
             vec_str = "[" + ",".join("%.8f" % x for x in vec) + "]"
+            conn = ensure_conn(conn)
             with conn.cursor() as cur2:
                 cur2.execute("update chunks set embedding = %s::vector where id = %s", (vec_str, chunk_id))
             conn.commit()
             embedded += 1
     print("Embedding done: " + str(embedded) + " chunks")
+    return conn
 
 
 def main():
@@ -320,7 +339,7 @@ def main():
         ensure_schema(conn)
         import_new_documents(conn)
         gemini_key = get_admin_gemini_key()
-        embed_pending(conn, gemini_key)
+        conn = embed_pending(conn, gemini_key)
     finally:
         conn.close()
 
