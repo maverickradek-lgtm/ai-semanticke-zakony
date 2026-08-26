@@ -37,5 +37,6 @@ jobs:
           NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
           NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
           BATCH_PER_SHARD: ${{ github.event.inputs.batch_per_shard || '20' }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }}"
           TIME_BUDGET_SECONDS: "3000"
         run: python scripts/embed_zakony_neon.py
