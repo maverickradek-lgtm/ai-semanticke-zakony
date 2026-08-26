@@ -24,8 +24,8 @@ jobs:
 
       - name: Overeni + bezpecny uklid
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
           NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
           MAX_DELETE_PER_RUN: ${{ github.event.inputs.max_delete_per_run || '500' }}
         run: python scripts/verify_and_cleanup_uohs_supabase.py
