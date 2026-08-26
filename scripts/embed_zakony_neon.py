@@ -176,6 +176,7 @@ def main():
 
     totals = {key: 0 for key in NEON_URLS}
     exhausted = {key: False for key in NEON_URLS}
+    zero_streak = {key: 0 for key in NEON_URLS}
     round_num = 0
 
     while time_left() > 30 and not all(exhausted.values()):
@@ -195,7 +196,15 @@ def main():
                 done = -1
             totals[key] += max(done, 0)
             if done == 0:
-                exhausted[key] = True
+                zero_streak[key] += 1
+                # 0 muze byt i prechodny zaskyk (napr. cerstve otevrene spojeni) -
+                # az 3x po sobe 0 v rade povazujeme shard za doopravdy vycerpany,
+                # jinak bychom mohli shard nespravedlive vyradit na cely beh
+                # (viz run #22 - 2021_dosud mel 0 v kole 1, ale chunky pak realne mel).
+                if zero_streak[key] >= 3:
+                    exhausted[key] = True
+            else:
+                zero_streak[key] = 0
         if round_num % 5 == 0:
             log(f"...kolo {round_num}: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
 
