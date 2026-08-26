@@ -1,0 +1,31 @@
+name: Overeni a uklid UOHS (smaze ze Supabase, co je bezpecne hotove v Neonu)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_delete_per_run:
+        description: "Max. pocet dokumentu smazanych za jeden beh"
+        required: false
+        default: "500"
+
+jobs:
+  verify-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Overeni + bezpecny uklid
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
+          MAX_DELETE_PER_RUN: ${{ github.event.inputs.max_delete_per_run || '500' }}
+        run: python scripts/verify_and_cleanup_uohs_supabase.py
