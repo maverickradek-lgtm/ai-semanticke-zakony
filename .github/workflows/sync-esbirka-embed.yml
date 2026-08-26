@@ -34,6 +34,7 @@ jobs:
         run: python scripts/sync_esbirka_embed.py
 
   embed_secondary:
+    if: false  # docasne pozastaveno - klic GEMINI_API_KEY_2 pujcen embeddingu zakonu (Neon)
     runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
@@ -57,6 +58,7 @@ jobs:
         run: python scripts/sync_esbirka_embed.py
 
   embed_uohs:
+    if: false  # docasne pozastaveno - klic GEMINI_API_KEY_UOHS pujcen embeddingu zakonu (Neon)
     runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
@@ -81,6 +83,7 @@ jobs:
 
 
   embed_judikat:
+    if: false  # docasne pozastaveno - klic GEMINI_API_KEY_UOHS pujcen embeddingu zakonu (Neon)
     runs-on: [self-hosted, nas]
     timeout-minutes: 60
     steps:
