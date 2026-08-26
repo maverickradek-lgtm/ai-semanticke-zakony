@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt --break-system-packages --root-user-action=ignore
+        run: pip install -r scripts/requirements.txt --root-user-action=ignore
 
       - name: Overeni + bezpecny uklid
         env:
