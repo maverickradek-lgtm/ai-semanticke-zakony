@@ -22,6 +22,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN_USER_ID = "2648f5db-bea6-4cac-b490-ad0ec59723df"
 GEMINI_API_KEY_OVERRIDE = os.environ.get("GEMINI_API_KEY_OVERRIDE")
+GEMINI_API_KEY_POOL = [k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL", "").split(",") if k.strip()]
 
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 256
@@ -160,7 +161,13 @@ def ensure_conn(neon_conns, key):
 def main():
     log("Zacinam embedding pending chunku ve 4 Neon shardech zakonu (round-robin)...")
 
-    gemini_key = get_admin_gemini_key()
+    if GEMINI_API_KEY_POOL:
+        shard_names = list(NEON_URLS.keys())
+        shard_keys = {name: GEMINI_API_KEY_POOL[i % len(GEMINI_API_KEY_POOL)] for i, name in enumerate(shard_names)}
+        log(f"Pouzivam pool {len(GEMINI_API_KEY_POOL)} Gemini klicu rozdelenych po shardech (vic klicu = vic paralelni kvoty).")
+    else:
+        admin_key = get_admin_gemini_key()
+        shard_keys = {name: admin_key for name in NEON_URLS}
 
     neon_conns = {}
     for key, url in NEON_URLS.items():
@@ -178,7 +185,7 @@ def main():
                 continue
             try:
                 conn = ensure_conn(neon_conns, key)
-                done = embed_shard_batch(conn, gemini_key, key)
+                done = embed_shard_batch(conn, shard_keys[key], key)
             except Exception as e:
                 log(f"   [{key}] CHYBA behem davky (zkusim znovu pristi kolo): {e}")
                 try:
