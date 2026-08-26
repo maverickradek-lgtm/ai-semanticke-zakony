@@ -1,0 +1,34 @@
+name: Uklid Supabase - smazat nezembedovane chunky uz migrovanych zakonu
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_docs_per_run:
+        description: "Max. pocet dokumentu proverenych/zpracovanych za jeden beh"
+        required: false
+        default: "3000"
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Smazat nezembedovane chunky migrovanych zakonu
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          MAX_DOCS_PER_RUN: ${{ github.event.inputs.max_docs_per_run || '3000' }}
+        run: python scripts/cleanup_unembedded_migrated_chunks.py
