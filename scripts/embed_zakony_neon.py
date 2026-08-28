@@ -73,6 +73,8 @@ def get_admin_gemini_key():
 
 
 def embed_text(text, gemini_key, retries=3):
+    last_status = None
+    last_body = None
     for attempt in range(retries):
         try:
             resp = requests.post(
@@ -85,16 +87,22 @@ def embed_text(text, gemini_key, retries=3):
                 },
                 timeout=30,
             )
+            last_status = resp.status_code
+            last_body = resp.text[:300]
             if resp.status_code == 429:
                 time.sleep(5 * (attempt + 1))
                 continue
             resp.raise_for_status()
             vec = resp.json().get("embedding", {}).get("values")
             return vec or None
-        except requests.RequestException:
+        except requests.RequestException as e:
+            last_status = getattr(getattr(e, "response", None), "status_code", None)
+            last_body = str(e)[:300]
             if attempt == retries - 1:
+                log(f"   DEBUG embed_text: vyjimka po vycerpani pokusu (status={last_status}): {last_body}")
                 raise
             time.sleep(3 * (attempt + 1))
+    log(f"   DEBUG embed_text: vycerpany pocet pokusu bez vyjimky (posledni status={last_status}): {last_body}")
     return None
 
 
