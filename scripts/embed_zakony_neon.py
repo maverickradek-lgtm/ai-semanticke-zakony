@@ -173,9 +173,6 @@ def main():
         shard_names = list(NEON_URLS.keys())
         shard_keys = {name: GEMINI_API_KEY_POOL[i % len(GEMINI_API_KEY_POOL)] for i, name in enumerate(shard_names)}
         log(f"Pouzivam pool {len(GEMINI_API_KEY_POOL)} Gemini klicu rozdelenych po shardech (vic klicu = vic paralelni kvoty).")
-        for _sn, _sk in shard_keys.items():
-            _masked = (_sk[:10] + "..." + _sk[-4:]) if _sk and len(_sk) > 16 else "???"
-            log(f"   shard {_sn}: klic {_masked}")
     else:
         admin_key = get_admin_gemini_key()
         shard_keys = {name: admin_key for name in NEON_URLS}
