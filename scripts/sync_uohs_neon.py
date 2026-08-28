@@ -32,6 +32,8 @@ from io import BytesIO
 import requests
 from pypdf import PdfReader
 import psycopg2
+from bs4 import BeautifulSoup
+from docx import Document as DocxDocument
 
 NL = chr(10)
 TAB = chr(9)
@@ -229,29 +231,67 @@ def embed_text(text, gemini_key, retries=3):
     return None
 
 
+def fetch_html_detail_text(iri):
+    if not iri:
+        return None
+    try:
+        r = SESSION.get(iri, headers=REQ_HEADERS, timeout=30)
+        if not r.ok:
+            return None
+        soup = BeautifulSoup(r.text, "html.parser")
+        for tag in soup(["script", "style", "nav", "header", "footer"]):
+            tag.decompose()
+        main = soup.find("main") or soup.find("body")
+        if main is None:
+            return None
+        text = main.get_text(separator=NL)
+        text = re.sub(r"[ " + TAB + "]+", " ", text)
+        text = re.sub(NL + "{3,}", NL + NL, text)
+        return text.strip()
+    except Exception:
+        return None
+
+
+def extract_docx_text(docx_bytes):
+    doc = DocxDocument(BytesIO(docx_bytes))
+    parts = [p.text for p in doc.paragraphs if p.text.strip()]
+    return NL.join(parts).strip()
+
+
 def upsert_document(conn, item):
     external_id = item.get("číslo_jednací") or item.get("spisová_značka")
     title = (item.get("věc") or {}).get("cs") or item.get("spisová_značka") or external_id
+    iri = item.get("iri")
     dokumenty = item.get("dokument") or []
-    if not dokumenty:
-        log("   Bez prilohy dokumentu, preskakuji: " + str(external_id) + " | iri=" + str(item.get("iri")))
-        return None, None
-    pdf_url = dokumenty[0].get("url")
-    if not pdf_url:
-        log("   Priloha bez URL, preskakuji: " + str(external_id) + " | iri=" + str(item.get("iri")))
-        return None, None
+    text = None
+    source_url = None
 
-    r = SESSION.get(pdf_url, headers=REQ_HEADERS, timeout=60)
-    if not r.ok:
-        log("   PDF stahovani selhalo (" + str(r.status_code) + "): " + str(external_id) + " | " + pdf_url)
-        return None, None
-    try:
-        text = extract_pdf_text(r.content)
-    except Exception as e:
-        log("   PDF extrakce selhala: " + str(external_id) + " | " + pdf_url + " | " + str(e))
-        return None, None
+    pdf_url = dokumenty[0].get("url") if dokumenty else None
+    if pdf_url:
+        try:
+            r = SESSION.get(pdf_url, headers=REQ_HEADERS, timeout=60)
+            if r.ok:
+                if pdf_url.lower().endswith(".docx"):
+                    candidate = extract_docx_text(r.content)
+                else:
+                    candidate = extract_pdf_text(r.content)
+                if candidate and len(candidate) >= 50:
+                    text = candidate
+                    source_url = pdf_url
+            else:
+                log("   PDF stahovani selhalo (" + str(r.status_code) + "): " + str(external_id) + " | " + pdf_url)
+        except Exception as e:
+            log("   Extrakce prilohy selhala: " + str(external_id) + " | " + pdf_url + " | " + str(e))
+
+    if not text:
+        html_text = fetch_html_detail_text(iri)
+        if html_text and len(html_text) >= 200:
+            text = html_text
+            source_url = iri
+            log("   Pouzit HTML fallback (detail stranky) misto prilohy: " + str(external_id))
+
     if not text or len(text) < 50:
-        log("   Prazdny/kratky text po extrakci, preskakuji: " + str(external_id))
+        log("   Zadny pouzitelny text (ani priloha ani HTML detail), preskakuji: " + str(external_id) + " | iri=" + str(iri))
         return None, None
 
     datum = (item.get("datum_právní_moci") or {}).get("datum")
@@ -259,7 +299,7 @@ def upsert_document(conn, item):
     with conn.cursor() as cur:
         cur.execute(
             "insert into documents (source, external_id, title, issuer, url, decision_date, status, is_current) values (%s,%s,%s,%s,%s,%s,%s,%s) returning id",
-            ("uohs", external_id, title, "UOHS", item.get("iri") or pdf_url, datum, "platny", True),
+            ("uohs", external_id, title, "UOHS", source_url or iri, datum, "platny", True),
         )
         doc_id = cur.fetchone()[0]
         chunk_list = split_into_chunks(text)
@@ -271,7 +311,6 @@ def upsert_document(conn, item):
             )
     conn.commit()
     return doc_id, len(chunk_list)
-
 
 def import_new_documents(conn):
     existing = fetch_existing_external_ids(conn)
