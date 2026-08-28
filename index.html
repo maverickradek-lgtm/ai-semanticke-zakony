@@ -340,6 +340,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <button type="button" class="chip" data-value="metodika">Metodika</button>
 <button type="button" class="chip" data-value="metodika_fs">Metodiky FS</button>
 <button type="button" class="chip" data-value="metodika_celni">Metodiky Celní správy</button>
+<button type="button" class="chip" data-value="metodika_uoou">Metodiky ÚOOÚ</button>
 </div>
 <input type="hidden" id="db-type-filter" value="">
 <button id="btn-db-search" class="secondary">Hledat</button>
@@ -1171,12 +1172,13 @@ function docTypeLabel(t) {
 if (t === 'metodika') return 'Metodiky CHJ';
 if (t === 'metodika_fs') return 'Metodiky FS';
 if (t === 'metodika_celni') return 'Metodiky Celní správy';
+if (t === 'metodika_uoou') return 'Metodiky ÚOOÚ';
 const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
 return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika','metodika_fs','metodika_celni'];
+const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika','metodika_fs','metodika_celni','metodika_uoou'];
 const el = $('db-stats');
 el.textContent = 'Načítám…';
 const results = await Promise.all(types.map(async t => {
@@ -1187,6 +1189,7 @@ return { count: r.error ? 0 : (r.data || 0) };
 if (t === 'metodika') { try { const r = await callFn('metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'metodika_fs') { try { const r = await callFn('fs-metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'metodika_celni') { try { const r = await callFn('celni-metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
+if (t === 'metodika_uoou') { try { const r = await callFn('uoou-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'rozhodnuti_uohs') { try { const r = await callFn('uohs-neon-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
 }));
@@ -1205,6 +1208,7 @@ const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
 const useNeon = typeFilter === 'metodika';
 const useNeonFs = typeFilter === 'metodika_fs';
 const useCelniNeon = typeFilter === 'metodika_celni';
+const useUoouNeon = typeFilter === 'metodika_uoou';
       const useUohsNeon = typeFilter === 'rozhodnuti_uohs';
  const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter);
 let data, error, count;
@@ -1237,6 +1241,18 @@ count = 0;
 const off = page * DB_PAGE_SIZE;
 try {
 const r = await callFn('celni-metodiky-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
+data = r.data;
+error = null;
+count = r.count;
+} catch (e) {
+data = null;
+error = e;
+count = 0;
+}
+} else if (useUoouNeon) {
+const off = page * DB_PAGE_SIZE;
+try {
+const r = await callFn('uoou-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
 data = r.data;
 error = null;
 count = r.count;
@@ -1328,7 +1344,7 @@ badge.style.color = 'var(--warn)';
 badge.textContent = `částečně (${st.embedded}/${st.total})`;
 }
 actions.appendChild(badge);
-if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni') {
+if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni' && d.doc_type !== 'metodika_uoou') {
 const prioLabel = document.createElement('label');
 prioLabel.className = 'small muted';
 prioLabel.style.display = 'flex'; prioLabel.style.alignItems = 'center'; prioLabel.style.gap = '4px';
@@ -1349,7 +1365,7 @@ prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
 }
-if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni') {
+if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni' && d.doc_type !== 'metodika_uoou') {
 const topLabel = document.createElement('label');
 topLabel.className = 'small muted';
 topLabel.style.marginLeft = '8px';
@@ -1808,7 +1824,7 @@ badge.style.color = 'var(--warn)';
 badge.textContent = `částečně (${st.embedded}/${st.total})`;
 }
 actions.appendChild(badge);
-if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni') {
+if (currentProfile && (currentProfile.is_admin || currentProfile.can_prioritize_embedding) && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni' && d.doc_type !== 'metodika_uoou') {
 const prioLabel = document.createElement('label');
 prioLabel.className = 'small muted';
 prioLabel.style.display = 'flex'; prioLabel.style.alignItems = 'center'; prioLabel.style.gap = '4px';
@@ -1829,7 +1845,7 @@ prioLabel.appendChild(prioCheckbox);
 prioLabel.appendChild(document.createTextNode('priorita'));
 actions.appendChild(prioLabel);
 }
-if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni') {
+if (currentProfile && currentProfile.is_admin && d.doc_type !== 'metodika' && d.doc_type !== 'metodika_fs' && d.doc_type !== 'metodika_celni' && d.doc_type !== 'metodika_uoou') {
 const topLabel = document.createElement('label');
 topLabel.className = 'small muted';
 topLabel.style.marginLeft = '8px';
