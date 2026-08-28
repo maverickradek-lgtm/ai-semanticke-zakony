@@ -234,19 +234,21 @@ def upsert_document(conn, item):
     title = (item.get("věc") or {}).get("cs") or item.get("spisová_značka") or external_id
     dokumenty = item.get("dokument") or []
     if not dokumenty:
+        log("   Bez prilohy dokumentu, preskakuji: " + str(external_id) + " | iri=" + str(item.get("iri")))
         return None, None
     pdf_url = dokumenty[0].get("url")
     if not pdf_url:
+        log("   Priloha bez URL, preskakuji: " + str(external_id) + " | iri=" + str(item.get("iri")))
         return None, None
 
     r = SESSION.get(pdf_url, headers=REQ_HEADERS, timeout=60)
     if not r.ok:
-        log("   PDF stahovani selhalo (" + str(r.status_code) + "): " + pdf_url)
+        log("   PDF stahovani selhalo (" + str(r.status_code) + "): " + str(external_id) + " | " + pdf_url)
         return None, None
     try:
         text = extract_pdf_text(r.content)
     except Exception as e:
-        log("   PDF extrakce selhala: " + str(e))
+        log("   PDF extrakce selhala: " + str(external_id) + " | " + pdf_url + " | " + str(e))
         return None, None
     if not text or len(text) < 50:
         log("   Prazdny/kratky text po extrakci, preskakuji: " + str(external_id))
