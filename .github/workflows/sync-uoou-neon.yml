@@ -1,0 +1,37 @@
+name: Sync UOOU (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Max novych dokumentu za beh"
+        required: false
+        default: "300"
+  schedule:
+    - cron: "45 4 * * *"
+
+concurrency:
+  group: sync-uoou-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Run UOOU sync (Neon)
+        env:
+          NEON_UOOU_DB_URL: ${{ secrets.NEON_UOOU_DB_URL }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_NS }}"
+          MAX_ITEMS: ${{ inputs.max_items || '300' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/sync_uoou_neon.py
