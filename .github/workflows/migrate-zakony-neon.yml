@@ -8,11 +8,11 @@ on:
         required: false
         default: "100000"
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 9 * * *"
 
 jobs:
   migrate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nas]
     timeout-minutes: 55
     strategy:
       fail-fast: false
