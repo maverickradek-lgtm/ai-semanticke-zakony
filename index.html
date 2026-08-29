@@ -529,7 +529,7 @@ const NS_SUPABASE_URL2 = 'https://ejjkyrprdzetxfwlkboa.supabase.co';
 const NS_ANON_KEY2 = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqamt5cnByZHpldHhmd2xrYm9hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzOTczMDIsImV4cCI6MjA5OTk3MzMwMn0.7owC8Bdp6hSsiWZ8EvUnm2lHHxMAeJnxRLvvEzBjzlA';
 const supabaseNs = createClient(NS_SUPABASE_URL2, NS_ANON_KEY2);
 const SECOND_DB_DOC_TYPES = new Set(['judikat']);
-      const ZAKONY_NEON_DOC_TYPES = new Set(['zakon','duvodova_zprava']); // POZOR: vyhlaska/narizeni/opatreni/dekret/jiny_predpis zatim NEJSOU v Neonu migrovany (migrate_zakony_to_neon.py migruje jen doc_type=zakon+duvodova_zprava) - az se migrace rozsiri, pridat je sem
+      const ZAKONY_NEON_DOC_TYPES = new Set(['zakon','vyhlaska','narizeni','opatreni','dekret','jiny_predpis','duvodova_zprava']); // ZMENA 2026-08-29: migrace nyni pokryva celou rodinu pravnich predpisu (viz zakony_vyhlasky_narizeni_scope_rozsireni_2026-08-29), takze i list/stats musi pocitat s Neonem pro vsechny tyto typy
 
 const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove('hidden');
@@ -1191,6 +1191,7 @@ if (t === 'metodika_fs') { try { const r = await callFn('fs-metodiky-db', { acti
 if (t === 'metodika_celni') { try { const r = await callFn('celni-metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'metodika_uoou') { try { const r = await callFn('uoou-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'rozhodnuti_uohs') { try { const r = await callFn('uohs-neon-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
+if (ZAKONY_NEON_DOC_TYPES.has(t)) { try { const [sbRes, neonRes] = await Promise.all([ supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t).or('content_hash.is.null,content_hash.neq.__migrated_to_neon__'), callFn('zakony-db', { action: 'stats', doc_type: t }) ]); const sbCount = sbRes.count ?? 0; const neonCount = neonRes.count ?? 0; return { count: sbCount + neonCount }; } catch { return { count: 0 }; } }
 return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
 }));
 const total = results.reduce((s, r) => s + (r.count || 0), 0);
