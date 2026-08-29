@@ -1,9 +1,9 @@
 """
-Overuje, ktere jiz do Neonu migrovane zakony (documents.content_hash =
-'__migrated_to_neon__' v hlavni Supabase DB) jsou v cilovem Neon shardu
-skutecne pritomne (>=1 chunk, presne sedici pocet chunku jako v
-Supabase), a takove bezpecne maze ze zdrojove Supabase DB, aby se
-uvolnilo misto - viz pamet storage_scaling_plan a
+Overuje, ktere jiz do Neonu migrovane pravni predpisy (documents.content_hash
+= '__migrated_to_neon__' v hlavni Supabase DB, viz ZAKONY_DOC_TYPES nize) jsou
+v cilovem Neon shardu skutecne pritomne (>=1 chunk, presne sedici pocet
+chunku jako v Supabase), a takove bezpecne maze ze zdrojove Supabase DB, aby
+se uvolnilo misto - viz pamet storage_scaling_plan a
 zakony_neon_sharding_plan.
 
 ZMENA 2026-08-29 (na zadost Radka): embedding se PRED smazanim uz
@@ -21,6 +21,16 @@ obcasny 500 od PostgRESTu je ocekavany provozni jev, ne duvod k padu
 celeho behu - drive kazda takova chyba shodila cely skript uprostred
 prace a zbytek behu (i kdyz uz mel bezpecne kandidaty pripravene) se
 proste ztratil.
+
+ZMENA 2026-08-29 #3 (na zadost Radka - stejny duvod jako u
+migrate_zakony_to_neon.py): rozsireno z (zakon, duvodova_zprava) na
+celou rodinu pravnich predpisu (viz ZAKONY_DOC_TYPES) - vyhlasky,
+narizeni, opatreni, dekrety a jine predpisy se drive vubec
+nemigrovaly ani needly, protoze migracni skript je nikdy neoznacil
+markerem '__migrated_to_neon__'. Ted uz migracni skript pokryva vsechny
+tyto typy, takze i tento uklidovy skript je musi zahrnout, jinak by
+navzdy zustaly v Supabase i po tom, co uz budou bezpecne zkopirovane
+do Neonu.
 
 Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
 - NIC se nesmaze, dokud v prislusnem Neon shardu dany dokument nema
@@ -49,7 +59,7 @@ Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
   take nevyzaduje, viz vyse. (Na zadost Radka, 2026-08-29.)
 
 Toto NENI zivy funkcni test aplikace (nevola se ai-query edge funkce) -
-"dostupnost v aplikaci" je zde definovana jako "kompletni a integritne
+"dostupnost v aplikaci" je zde definovana jako "kompletni a integritni
 overena data v Neonu", protoze napojeni Neon shardu do ai-query bylo jiz
 drive tento projekt zivotne overeno (viz zakony_neon_embed_and_search_wiring).
 """
@@ -63,6 +73,13 @@ import requests
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 MAX_DELETE_PER_RUN = int(os.environ.get("MAX_DELETE_PER_RUN", "500"))
+
+# Vsechny doc_type hodnoty povazovane za "pravni predpis rodiny zakony" -
+# musi byt presne stejny seznam jako ZAKONY_DOC_TYPES + "duvodova_zprava" v
+# migrate_zakony_to_neon.py, jinak by tento skript bud preskakoval bezpecne
+# kandidaty (kdyby mel uzsi seznam) nebo zbytecne zkousel mazat typy, ktere
+# migrace vubec nezpracovava (kdyby mel sirsi seznam).
+ZAKONY_DOC_TYPES = ["zakon", "duvodova_zprava", "vyhlaska", "narizeni", "opatreni", "dekret", "jiny_predpis"]
 
 NEON_URLS = {
     "do1997": os.environ["NEON_ZAKONY_DO1997_DB_URL"],
@@ -136,8 +153,9 @@ def sb_delete(path, params):
 
 
 def get_migrated_candidates():
-    """Vsechny zakony A duvodove zpravy v Supabase, ktere migracni skript uz
-    oznacil jako prekopirovane do Neonu (content_hash marker).
+    """Vsechny pravni predpisy v Supabase (viz ZAKONY_DOC_TYPES), ktere
+    migracni skript uz oznacil jako prekopirovane do Neonu (content_hash
+    marker).
 
     Duvodove zpravy se sem zapocitavaji od 2026-08-13 spolu se zakony -
     migrate_zakony_to_neon.py je ted take migruje (do stejneho shardu jako
@@ -145,6 +163,9 @@ def get_migrated_candidates():
     (explains_document_id) na svuj zakon a ten zakon se pak mohl bezpecne
     smazat - viz get_referenced_document_ids() a pamet
     explains_document_id_fk_bug_2026-08-13.
+
+    Vyhlasky/narizeni/opatreni/dekrety/jine predpisy se zapocitavaji od
+    2026-08-29 - viz zmena #3 v docstringu modulu.
 
     Musi se strankovat (offset/limit v cyklu) - jeden pozadavek s
     limit=10000 se ticha orizne na Supabase/PostgREST vychozi max-rows
@@ -160,7 +181,7 @@ def get_migrated_candidates():
             "documents",
             {
                 "select": "id,external_id,title,predpis_rok",
-                "doc_type": "in.(zakon,duvodova_zprava)",
+                "doc_type": f"in.({','.join(ZAKONY_DOC_TYPES)})",
                 "content_hash": "eq.__migrated_to_neon__",
                 "order": "id.asc",
                 "limit": str(page),
@@ -289,7 +310,7 @@ def delete_batch(doc_ids):
 
 
 def main():
-    log("Overuji migrovane zakony (embedding se nevyzaduje) a pripravuji bezpecny uklid Supabase...")
+    log("Overuji migrovane pravni predpisy (embedding se nevyzaduje) a pripravuji bezpecny uklid Supabase...")
 
     candidates = get_migrated_candidates()
     log(f"Kandidatu (oznaceno jako migrovano v Supabase): {len(candidates)}")
@@ -397,7 +418,7 @@ def main():
                 # jednom dokumentu, aby se problem omezil jen na ten konkretni
                 # zaznam (viz incident 2026-08-13). (delete_batch uz sam o sobe
                 # zkousi retry na prechodne chyby, takze sem se propadne az
-                # skutecne trvala/opakovana chyba.)
+                # skutecna trvala/opakovana chyba.)
                 log(f"    CHYBA pri mazani davky ({len(batch)} dok.), zkousim po jednom: {e}")
                 for doc_id in batch:
                     try:
