@@ -12,6 +12,16 @@ zkopirovany do Neonu. Embedding se v Neonu dohani nezavisle, embedovaci
 pipeline pracuje primo nad Neonem (ne nad Supabase), takze na poradi
 "nejdriv smazat, pak zembedovat" nezalezi.
 
+ZMENA 2026-08-29 #2 (po chybe zjistene Radkem - viz pamet
+retry_transient_supabase_errors_2026-08-29): Supabase REST volani ted
+maji retry s exponencialnim couvanim na prechodne chyby (5xx, timeout,
+connection error). Hlavni DB je casto pod tezkou soubeznou zatezi (tento
+skript + migrace + embedding + zivy provoz appky bezi soubezne), takze
+obcasny 500 od PostgRESTu je ocekavany provozni jev, ne duvod k padu
+celeho behu - drive kazda takova chyba shodila cely skript uprostred
+prace a zbytek behu (i kdyz uz mel bezpecne kandidaty pripravene) se
+proste ztratil.
+
 Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
 - NIC se nesmaze, dokud v prislusnem Neon shardu dany dokument nema
   alespon 1 chunk (embedding tohoto chunku se NEvyzaduje, viz vyse).
@@ -46,6 +56,7 @@ drive tento projekt zivotne overeno (viz zakony_neon_embed_and_search_wiring).
 
 import os
 import sys
+import time
 import psycopg2
 import requests
 
@@ -62,6 +73,9 @@ NEON_URLS = {
 
 SESSION = requests.Session()
 
+MAX_RETRIES = 5
+RETRY_BASE_DELAY = 2  # sekundy, exponencialne: 2,4,8,16,32
+
 
 def log(*a):
     print(*a)
@@ -76,10 +90,49 @@ def sb_headers():
     }
 
 
+def _request_with_retry(method, url, **kwargs):
+    """Provede pozadavek na Supabase REST API s retry+backoff na prechodne
+    chyby (5xx odpovedi, timeouty, vypadky spojeni). Hlavni Supabase DB je
+    casto pod tezkou soubeznou zatezi (tento skript + migrace + embedding +
+    zivy provoz appky), takze obcasny 500 od PostgRESTu je ocekavany
+    provozni jev - drive takova chyba shodila cely beh skriptu uprostred
+    prace. 4xx chyby (napr. spatny dotaz) se NEOPAKUJI, protoze by se stejne
+    porad opakovaly se stejnym vysledkem."""
+    last_exc = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            r = SESSION.request(method, url, timeout=60, **kwargs)
+            if r.status_code >= 500:
+                raise requests.exceptions.HTTPError(
+                    f"{r.status_code} Server Error: {r.text[:200]}", response=r
+                )
+            r.raise_for_status()
+            return r
+        except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            is_5xx = isinstance(e, requests.exceptions.HTTPError) and e.response is not None and e.response.status_code >= 500
+            is_4xx = isinstance(e, requests.exceptions.HTTPError) and e.response is not None and 400 <= e.response.status_code < 500
+            if is_4xx:
+                raise
+            last_exc = e
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                log(f"    (prechodna chyba Supabase, pokus {attempt}/{MAX_RETRIES}, cekam {delay}s: {e})")
+                time.sleep(delay)
+    raise last_exc
+
+
 def sb_get(path, params):
-    r = SESSION.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), params=params, timeout=60)
-    r.raise_for_status()
+    r = _request_with_retry("GET", f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), params=params)
     return r.json()
+
+
+def sb_delete(path, params):
+    return _request_with_retry(
+        "DELETE",
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        headers={**sb_headers(), "Prefer": "return=minimal"},
+        params=params,
+    )
 
 
 def get_migrated_candidates():
@@ -131,10 +184,10 @@ def get_supabase_chunk_counts(doc_ids):
     Stejny duvod jako u get_migrated_candidates(): jeden pozadavek se
     "vysokym limitem" se muze ticha orizout na Supabase/PostgREST vychozi
     max-rows. Zde je to o to zakeznejsi, ze by to VZDY vypadalo bezpecne
-    (nizsi napocitany pocet chunku => dokument se jen presko ci jako
+    (nizsi napocitany pocet chunku => dokument se jen preskoci jako
     "nesedi pocet", nikdy se omylem nesmaze) - ale zbytecne by to
-    blokovalo skutecne bezpecne kandidaty. Proto se i tady stranku uje
-    pres offset v cyklu, dokud dana davka doku mentu neni cela nactena."""
+    blokovalo skutecne bezpecne kandidaty. Proto se i tady strankuje
+    pres offset v cyklu, dokud dana davka dokumentu neni cela nactena."""
     counts = {}
     if not doc_ids:
         return counts
@@ -222,7 +275,7 @@ def get_neon_present(shard_key):
                 """
             )
             rows = cur.fetchall()
-        return {str(doc_id): cnt for doc_id, cnt in rows}
+            return {str(doc_id): cnt for doc_id, cnt in rows}
     finally:
         conn.close()
 
@@ -231,22 +284,8 @@ def delete_batch(doc_ids):
     if not doc_ids:
         return
     ids_expr = f"in.({','.join(doc_ids)})"
-    r1 = SESSION.delete(
-        f"{SUPABASE_URL}/rest/v1/chunks",
-        headers={**sb_headers(), "Prefer": "return=minimal"},
-        params={"document_id": ids_expr},
-        timeout=60,
-    )
-    if r1.status_code >= 300:
-        raise RuntimeError(f"Mazani chunku selhalo: {r1.status_code} {r1.text[:300]}")
-    r2 = SESSION.delete(
-        f"{SUPABASE_URL}/rest/v1/documents",
-        headers={**sb_headers(), "Prefer": "return=minimal"},
-        params={"id": ids_expr},
-        timeout=60,
-    )
-    if r2.status_code >= 300:
-        raise RuntimeError(f"Mazani dokumentu selhalo: {r2.status_code} {r2.text[:300]}")
+    sb_delete("chunks", {"document_id": ids_expr})
+    sb_delete("documents", {"id": ids_expr})
 
 
 def main():
@@ -290,7 +329,11 @@ def main():
         # postupne "olupuje" od listu ke koreni, misto aby byl navzdy
         # blokovany - viz Radkuv dotaz 2026-08-29 a bullet o
         # explains_document_id/superseded_by v docstringu modulu.
-        referenced_ids = get_referenced_document_ids()
+        try:
+            referenced_ids = get_referenced_document_ids()
+        except Exception as e:
+            log(f"  CHYBA pri cteni odkazu (i po retry), koncim tento beh pro jistotu: {e}")
+            break
 
         round_candidates = [d for d in remaining if d not in referenced_ids]
         still_referenced = [d for d in remaining if d in referenced_ids]
@@ -300,7 +343,11 @@ def main():
             log("  V tomto kole nic noveho k mazani (vse zbyvajici je porad odkazovano), konec.")
             break
 
-        sb_chunk_counts = get_supabase_chunk_counts(round_candidates)
+        try:
+            sb_chunk_counts = get_supabase_chunk_counts(round_candidates)
+        except Exception as e:
+            log(f"  CHYBA pri cteni poctu chunku v Supabase (i po retry), koncim tento beh pro jistotu: {e}")
+            break
 
         safe_to_delete = []
         for doc_id in round_candidates:
@@ -348,7 +395,9 @@ def main():
                 # (napr. novy odkaz vznikly mezitim), nechceme kvuli 1 spatnemu
                 # dokumentu preskocit cely zbytek davky. Zkusime tedy davku po
                 # jednom dokumentu, aby se problem omezil jen na ten konkretni
-                # zaznam (viz incident 2026-08-13).
+                # zaznam (viz incident 2026-08-13). (delete_batch uz sam o sobe
+                # zkousi retry na prechodne chyby, takze sem se propadne az
+                # skutecne trvala/opakovana chyba.)
                 log(f"    CHYBA pri mazani davky ({len(batch)} dok.), zkousim po jednom: {e}")
                 for doc_id in batch:
                     try:
