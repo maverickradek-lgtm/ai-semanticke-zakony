@@ -26,10 +26,17 @@ Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
   skodu.
 - Dokument, na ktery jeste odkazuje jiny dokument (documents.
   explains_document_id, napr. duvodova zprava, nebo documents.
-  superseded_by), se NIKDY nemaze - smazani by porusilo FK constraint a
-  (protoze DELETE ... WHERE id IN (...) je atomicke) shodilo by mazani
-  CELE davky, ve ktere se takovy dokument nahodou ocitl (viz incident
-  2026-08-13).
+  superseded_by), se nemaze, DOKUD odkaz v Supabase existuje - smazani
+  by porusilo FK constraint a (protoze DELETE ... WHERE id IN (...) je
+  atomicke) shodilo by mazani CELE davky, ve ktere se takovy dokument
+  nahodou ocitl (viz incident 2026-08-13). NENI to ale navzdy: skript
+  bezi ve vice "kolech" v ramci jednoho behu a pred kazdym kolem si
+  odkazy nacte znovu CERSTVE - jakmile se v predchozim kole smaze
+  odkazujici radek (napr. duvodova zprava, ktera uz ma FK i v Neonu ve
+  stejnem shardu jako jeji zakon - viz duvodova_zprava_neon_migration_
+  2026-08-13), v dalsim kole uz prestane byt jeho cil "odkazovany" a
+  muze se take bezpecne smazat. Embedding se u odkazujiciho dokumentu
+  take nevyzaduje, viz vyse. (Na zadost Radka, 2026-08-29.)
 
 Toto NENI zivy funkcni test aplikace (nevola se ai-query edge funkce) -
 "dostupnost v aplikaci" je zde definovana jako "kompletni a integritne
@@ -251,9 +258,6 @@ def main():
         log("Zadni kandidati, konec.")
         return
 
-    referenced_ids = get_referenced_document_ids()
-    log(f"Dokumentu odkazovanych odjinud (explains_document_id/superseded_by), tyto se nikdy nemazou: {len(referenced_ids)}")
-
     neon_present = {}
     for shard_key in NEON_URLS:
         try:
@@ -269,71 +273,100 @@ def main():
         log("Zadny dokument zatim neni pripraven ke smazani, konec.")
         return
 
-    skipped_referenced = [d for d in fully_ready_ids if d in referenced_ids]
-    fully_ready_ids = [d for d in fully_ready_ids if d not in referenced_ids]
-    if skipped_referenced:
-        log(f"PRESKAKUJI {len(skipped_referenced)} dokumentu, protoze na ne jeste nekdo odkazuje (napr. duvodova zprava) - nelze smazat bez poruseni vazby")
-    if not fully_ready_ids:
-        log("Po vyrazeni odkazovanych dokumentu nezbyl zadny kandidat, konec.")
-        return
+    remaining = list(fully_ready_ids)
+    total_deleted = 0
+    round_num = 0
+    MAX_ROUNDS = 15
 
-    sb_chunk_counts = get_supabase_chunk_counts(fully_ready_ids)
+    while remaining and total_deleted < MAX_DELETE_PER_RUN and round_num < MAX_ROUNDS:
+        round_num += 1
+        log(f"--- Kolo {round_num}: zbyva {len(remaining)} kandidatu k posouzeni ---")
 
-    safe_to_delete = []
-    for doc_id in fully_ready_ids:
-        neon_count = neon_present[doc_id]
-        sb_count = sb_chunk_counts.get(doc_id, 0)
-        title = candidates[doc_id].get("title", "")[:60]
-        if sb_count == 0:
-            # V teto fazi uz vime, ze dokument ma v Neonu >=1 chunk
-            # (jinak by nebyl v neon_present/fully_ready_ids -
-            # get_neon_present pouziva INNER JOIN na chunks; embedding
-            # tohoto chunku se nevyzaduje, viz docstring modulu).
-            # 0 chunku v Supabase tedy uz NEMUZE znamenat
-            # "nejasny, historicky prazdny dokument" - muze uz jen
-            # znamenat, ze predchozi beh chunky uz smazal, ale smazani
-            # samotneho zaznamu dokumentu tehdy selhalo (viz incident
-            # 2026-08-13). Bezpecne tedy jen DOKONCIME drive preruseny
-            # uklid - chunky uz beztak nejsou co mazat.
-            log(f"  DOKONCUJI drive preruseny uklid {doc_id} ({title}): chunky uz v Supabase nejsou, mazu jen zbyvajici zaznam dokumentu")
+        # Odkazy natahujeme CERSTVE kazde kolo znovu (ne jednou na
+        # zacatku behu): kdyz v predchozim kole smazeme napr. duvodovou
+        # zpravu, jeji zakon prestane byt "odkazovany" a v tomto kole uz
+        # muze projit. Diky tomu se retezec vazeb (zakon <- duvodova
+        # zprava, nebo retez nahrazenych verzi pres superseded_by)
+        # postupne "olupuje" od listu ke koreni, misto aby byl navzdy
+        # blokovany - viz Radkuv dotaz 2026-08-29 a bullet o
+        # explains_document_id/superseded_by v docstringu modulu.
+        referenced_ids = get_referenced_document_ids()
+
+        round_candidates = [d for d in remaining if d not in referenced_ids]
+        still_referenced = [d for d in remaining if d in referenced_ids]
+        if still_referenced:
+            log(f"  Zatim preskakuji {len(still_referenced)} dokumentu, na ktere jeste nekdo odkazuje (zkusim znovu v dalsim kole, az se pripadne smaze odkazujici radek)")
+        if not round_candidates:
+            log("  V tomto kole nic noveho k mazani (vse zbyvajici je porad odkazovano), konec.")
+            break
+
+        sb_chunk_counts = get_supabase_chunk_counts(round_candidates)
+
+        safe_to_delete = []
+        for doc_id in round_candidates:
+            neon_count = neon_present[doc_id]
+            sb_count = sb_chunk_counts.get(doc_id, 0)
+            title = candidates[doc_id].get("title", "")[:60]
+            if sb_count == 0:
+                # V teto fazi uz vime, ze dokument ma v Neonu >=1 chunk
+                # (jinak by nebyl v neon_present/fully_ready_ids -
+                # get_neon_present pouziva INNER JOIN na chunks; embedding
+                # tohoto chunku se nevyzaduje, viz docstring modulu).
+                # 0 chunku v Supabase tedy uz NEMUZE znamenat
+                # "nejasny, historicky prazdny dokument" - muze uz jen
+                # znamenat, ze predchozi beh chunky uz smazal, ale smazani
+                # samotneho zaznamu dokumentu tehdy selhalo (viz incident
+                # 2026-08-13). Bezpecne tedy jen DOKONCIME drive preruseny
+                # uklid - chunky uz beztak nejsou co mazat.
+                log(f"  DOKONCUJI drive preruseny uklid {doc_id} ({title}): chunky uz v Supabase nejsou, mazu jen zbyvajici zaznam dokumentu")
+                safe_to_delete.append(doc_id)
+                continue
+            if neon_count != sb_count:
+                log(f"  PRESKAKUJI {doc_id} ({title}): pocet chunku nesedi (Neon={neon_count}, Supabase={sb_count})")
+                remaining.remove(doc_id)
+                continue
             safe_to_delete.append(doc_id)
-            continue
-        if neon_count != sb_count:
-            log(f"  PRESKAKUJI {doc_id} ({title}): pocet chunku nesedi (Neon={neon_count}, Supabase={sb_count})")
-            continue
-        safe_to_delete.append(doc_id)
 
-    log(f"Integritne overenych (pocet chunku presne sedi) kandidatu: {len(safe_to_delete)}")
-    if not safe_to_delete:
-        log("Po integritni kontrole nezbyl zadny bezpecny kandidat, konec bez mazani.")
-        return
+        if not safe_to_delete:
+            log("  Po integritni kontrole nezbyl v tomto kole zadny bezpecny kandidat, konec.")
+            break
 
-    to_delete = safe_to_delete[:MAX_DELETE_PER_RUN]
-    log(f"Mazu {len(to_delete)} dokumentu ze Supabase (z {len(safe_to_delete)} bezpecnych kandidatu, limit {MAX_DELETE_PER_RUN}/beh)...")
+        budget_left = MAX_DELETE_PER_RUN - total_deleted
+        to_delete = safe_to_delete[:budget_left]
+        log(f"  Mazu {len(to_delete)} dokumentu ze Supabase v tomto kole (z {len(safe_to_delete)} bezpecnych v tomto kole, celkovy limit {MAX_DELETE_PER_RUN}/beh)...")
 
-    page = 50
-    deleted = 0
-    for i in range(0, len(to_delete), page):
-        batch = to_delete[i : i + page]
-        try:
-            delete_batch(batch)
-            deleted += len(batch)
-        except Exception as e:
-            # Jedno DELETE ... WHERE id IN (...) je atomicke - kdyby v
-            # davce byl i pres predchozi filtry nejaky necekany konflikt
-            # (napr. novy odkaz vznikly mezitim), nechceme kvuli 1 spatnemu
-            # dokumentu preskocit cely zbytek davky. Zkusime tedy davku po
-            # jednom dokumentu, aby se problem omezil jen na ten konkretni
-            # zaznam (viz incident 2026-08-13).
-            log(f"  CHYBA pri mazani davky ({len(batch)} dok.), zkousim po jednom: {e}")
-            for doc_id in batch:
-                try:
-                    delete_batch([doc_id])
-                    deleted += 1
-                except Exception as e2:
-                    log(f"    PRESKAKUJI {doc_id}: {e2}")
+        page = 50
+        deleted_this_round = 0
+        for i in range(0, len(to_delete), page):
+            batch = to_delete[i : i + page]
+            try:
+                delete_batch(batch)
+                deleted_this_round += len(batch)
+            except Exception as e:
+                # Jedno DELETE ... WHERE id IN (...) je atomicke - kdyby v
+                # davce byl i pres predchozi filtry nejaky necekany konflikt
+                # (napr. novy odkaz vznikly mezitim), nechceme kvuli 1 spatnemu
+                # dokumentu preskocit cely zbytek davky. Zkusime tedy davku po
+                # jednom dokumentu, aby se problem omezil jen na ten konkretni
+                # zaznam (viz incident 2026-08-13).
+                log(f"    CHYBA pri mazani davky ({len(batch)} dok.), zkousim po jednom: {e}")
+                for doc_id in batch:
+                    try:
+                        delete_batch([doc_id])
+                        deleted_this_round += 1
+                    except Exception as e2:
+                        log(f"    PRESKAKUJI {doc_id}: {e2}")
 
-    log(f"Hotovo. Smazano {deleted} dokumentu (+ jejich chunky) ze Supabase.")
+        for doc_id in to_delete:
+            remaining.remove(doc_id)
+        total_deleted += deleted_this_round
+        log(f"  V kole {round_num} smazano {deleted_this_round} dokumentu.")
+
+        if deleted_this_round == 0:
+            log("  V tomto kole se nic nesmazalo, koncim, abych se nezacyklil.")
+            break
+
+    log(f"Hotovo. Celkem smazano {total_deleted} dokumentu (+ jejich chunky) ze Supabase v {round_num} kole(ch).")
 
 
 if __name__ == "__main__":
