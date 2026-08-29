@@ -191,18 +191,41 @@ def fetch_storage_contents_parallel(chunk_ids):
 def get_already_migrated_ids(doc_types):
     """doc_types muze byt jeden retezec (zpetna kompatibilita) nebo seznam
     vice doc_type hodnot - vraci id vsech dokumentu z nich, ktere uz maji
-    migracni marker."""
+    migracni marker.
+
+    ZMENA 2026-08-29 #4 (chyba zjistena Radkem - beh #33 poradal ukazoval
+    "migruji" i kdyz uz bylo vse hotovo): puvodne jeden sb_get() bez
+    strankovani - Supabase/PostgREST vychozi max-rows (1000) tise orizl
+    vysledek, takze pri >1000 jiz migrovanych dokumentech skript znal jen
+    prvnich 1000 a zbytek povazoval za "novy", zbytecne je zase cely
+    stahoval a upsertoval do Neonu (nesкodilo datum, jen plytvalo casem).
+    Ted se strankuje stejne jako v get_migrated_candidates() v uklidovem
+    skriptu."""
     if isinstance(doc_types, str):
         doc_types = [doc_types]
-    rows = sb_get(
-        "documents",
-        {
-            "select": "id",
-            "doc_type": f"in.({','.join(doc_types)})",
-            "content_hash": "eq.__migrated_to_neon__",
-        },
-    )
-    return set(r["id"] for r in rows)
+    ids = set()
+    page = 1000
+    offset = 0
+    while True:
+        rows = sb_get(
+            "documents",
+            {
+                "select": "id",
+                "doc_type": f"in.({','.join(doc_types)})",
+                "content_hash": "eq.__migrated_to_neon__",
+                "order": "id.asc",
+                "limit": str(page),
+                "offset": str(offset),
+            },
+        )
+        if not rows:
+            break
+        for r in rows:
+            ids.add(r["id"])
+        offset += page
+        if len(rows) < page:
+            break
+    return ids
 
 
 def ensure_schema(conn):
