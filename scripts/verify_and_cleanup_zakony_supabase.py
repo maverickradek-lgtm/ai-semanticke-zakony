@@ -1,13 +1,20 @@
 """
 Overuje, ktere jiz do Neonu migrovane zakony (documents.content_hash =
-'__migrated_to_neon__' v hlavni Supabase DB) maji v cilovem Neon shardu
-KOMPLETNI embedding (has_pending_chunks = false) a presne sedici pocet
-chunku, a takove bezpecne maze ze zdrojove Supabase DB, aby se uvolnilo
-misto - viz pamet storage_scaling_plan a zakony_neon_sharding_plan.
+'__migrated_to_neon__' v hlavni Supabase DB) jsou v cilovem Neon shardu
+skutecne pritomne (>=1 chunk, presne sedici pocet chunku jako v
+Supabase), a takove bezpecne maze ze zdrojove Supabase DB, aby se
+uvolnilo misto - viz pamet storage_scaling_plan a
+zakony_neon_sharding_plan.
+
+ZMENA 2026-08-29 (na zadost Radka): embedding se PRED smazanim uz
+NEVYZADUJE - maze se hned, jakmile je dokument overene a kompletne
+zkopirovany do Neonu. Embedding se v Neonu dohani nezavisle, embedovaci
+pipeline pracuje primo nad Neonem (ne nad Supabase), takze na poradi
+"nejdriv smazat, pak zembedovat" nezalezi.
 
 Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
 - NIC se nesmaze, dokud v prislusnem Neon shardu dany dokument nema
-  has_pending_chunks = false (tj. VSECHNY jeho chunky maji embedding).
+  alespon 1 chunk (embedding tohoto chunku se NEvyzaduje, viz vyse).
 - NIC se nesmaze, pokud pocet chunku v Neonu neodpovida presne poctu
   chunku aktualne v Supabase (ochrana proti necekanym rozdilum, napr.
   soubeznemu behu neceho jineho).
@@ -191,10 +198,11 @@ def get_referenced_document_ids():
     return referenced
 
 
-def get_neon_fully_embedded(shard_key):
+def get_neon_present(shard_key):
     """Pro dany shard vrati {doc_id: pocet_chunku} pro dokumenty, ktere maji
-    has_pending_chunks = false (vsechny chunky zembedovane) a alespon 1
-    chunk (prazdny/rozbity dokument se nepocita jako hotovy)."""
+    v Neonu alespon 1 chunk (prazdny/rozbity dokument se nepocita jako
+    pritomny). Embedding se ZAMERNE nevyzaduje - viz zmena 2026-08-29
+    v hlavnim docstringu modulu."""
     conn = psycopg2.connect(NEON_URLS[shard_key], connect_timeout=15)
     try:
         with conn.cursor() as cur:
@@ -203,7 +211,6 @@ def get_neon_fully_embedded(shard_key):
                 select d.id, count(c.id)
                 from documents d
                 join chunks c on c.document_id = d.id
-                where d.has_pending_chunks = false
                 group by d.id
                 """
             )
@@ -236,7 +243,7 @@ def delete_batch(doc_ids):
 
 
 def main():
-    log("Overuji migrovane+zembedovane zakony a pripravuji bezpecny uklid Supabase...")
+    log("Overuji migrovane zakony (embedding se nevyzaduje) a pripravuji bezpecny uklid Supabase...")
 
     candidates = get_migrated_candidates()
     log(f"Kandidatu (oznaceno jako migrovano v Supabase): {len(candidates)}")
@@ -247,17 +254,17 @@ def main():
     referenced_ids = get_referenced_document_ids()
     log(f"Dokumentu odkazovanych odjinud (explains_document_id/superseded_by), tyto se nikdy nemazou: {len(referenced_ids)}")
 
-    neon_embedded = {}
+    neon_present = {}
     for shard_key in NEON_URLS:
         try:
-            shard_map = get_neon_fully_embedded(shard_key)
-            log(f"  [{shard_key}] plne zembedovanych dokumentu v Neonu: {len(shard_map)}")
-            neon_embedded.update(shard_map)
+            shard_map = get_neon_present(shard_key)
+            log(f"  [{shard_key}] pritomnych dokumentu v Neonu (embedding se nevyzaduje): {len(shard_map)}")
+            neon_present.update(shard_map)
         except Exception as e:
             log(f"  [{shard_key}] CHYBA pri cteni z Neonu, tento shard preskakuji (nic z nej se nesmaze): {e}")
 
-    fully_ready_ids = [doc_id for doc_id in candidates if doc_id in neon_embedded]
-    log(f"Kandidatu s kompletnim embeddingem v prislusnem Neon shardu: {len(fully_ready_ids)}")
+    fully_ready_ids = [doc_id for doc_id in candidates if doc_id in neon_present]
+    log(f"Kandidatu pritomnych v prislusnem Neon shardu (embedding se nevyzaduje): {len(fully_ready_ids)}")
     if not fully_ready_ids:
         log("Zadny dokument zatim neni pripraven ke smazani, konec.")
         return
@@ -274,14 +281,15 @@ def main():
 
     safe_to_delete = []
     for doc_id in fully_ready_ids:
-        neon_count = neon_embedded[doc_id]
+        neon_count = neon_present[doc_id]
         sb_count = sb_chunk_counts.get(doc_id, 0)
         title = candidates[doc_id].get("title", "")[:60]
         if sb_count == 0:
-            # V teto fazi uz vime, ze dokument ma v Neonu >=1 kompletne
-            # zembedovany chunk (jinak by nebyl v neon_embedded/
-            # fully_ready_ids - get_neon_fully_embedded pouziva INNER JOIN
-            # na chunks). 0 chunku v Supabase tedy uz NEMUZE znamenat
+            # V teto fazi uz vime, ze dokument ma v Neonu >=1 chunk
+            # (jinak by nebyl v neon_present/fully_ready_ids -
+            # get_neon_present pouziva INNER JOIN na chunks; embedding
+            # tohoto chunku se nevyzaduje, viz docstring modulu).
+            # 0 chunku v Supabase tedy uz NEMUZE znamenat
             # "nejasny, historicky prazdny dokument" - muze uz jen
             # znamenat, ze predchozi beh chunky uz smazal, ale smazani
             # samotneho zaznamu dokumentu tehdy selhalo (viz incident
