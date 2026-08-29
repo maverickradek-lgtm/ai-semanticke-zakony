@@ -329,6 +329,25 @@ def main():
 
     fully_ready_ids = [doc_id for doc_id in candidates if doc_id in neon_present]
     log(f"Kandidatu pritomnych v prislusnem Neon shardu (embedding se nevyzaduje): {len(fully_ready_ids)}")
+
+    # ZMENA 2026-08-29 #6: Radkuv postreh - kandidatu je vic nez fully_ready_ids,
+    # ptal se kam se ztraceji. get_neon_present() pouziva INNER JOIN, takze
+    # dokumenty s 0 chunky uz v samotne Supabase (nikdy nebyly rozchunkovany,
+    # typicky velmi kratke/historicke predpisy) v nem nikdy nebudou - i kdyz
+    # je bezpecne smazat rovnou, neni co ztratit. Bez tohoto bloku by navzdy
+    # zustaly viset jako kandidat a nikdy by se nesmazaly. Zjistime je zvlast
+    # pres get_supabase_chunk_counts a pridame do fully_ready_ids - integritni
+    # kontrola v kole pak spravne vyhodnoti Neon=0 / Supabase=0 jako shodu.
+    not_in_neon = [doc_id for doc_id in candidates if doc_id not in neon_present]
+    try:
+        maybe_zero_counts = get_supabase_chunk_counts(not_in_neon)
+    except Exception as e:
+        log(f"  CHYBA pri hledani 0-chunkovych dokumentu v Supabase, pokracuji bez nich: {e}")
+        maybe_zero_counts = {}
+    zero_chunk_ids = [doc_id for doc_id in not_in_neon if maybe_zero_counts.get(doc_id, 0) == 0]
+    if zero_chunk_ids:
+        log(f"Navic {len(zero_chunk_ids)} dokumentu ma 0 chunku uz v samotne Supabase (nikdy nebyly rozchunkovany) - bezpecne k primemu smazani bez ohledu na Neon")
+        fully_ready_ids = fully_ready_ids + zero_chunk_ids
     if not fully_ready_ids:
         log("Zadny dokument zatim neni pripraven ke smazani, konec.")
         return
@@ -372,7 +391,7 @@ def main():
 
         safe_to_delete = []
         for doc_id in round_candidates:
-            neon_count = neon_present[doc_id]
+            neon_count = neon_present.get(doc_id, 0)  # ZMENA 2026-08-29 #6: 0-chunkove kandidaty nejsou v neon_present
             sb_count = sb_chunk_counts.get(doc_id, 0)
             title = candidates[doc_id].get("title", "")[:60]
             if sb_count == 0:
