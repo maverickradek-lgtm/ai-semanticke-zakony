@@ -28,6 +28,7 @@ EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 256
 BATCH_PER_SHARD = int(os.environ.get("BATCH_PER_SHARD", "20"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
+MAX_CONSECUTIVE_429 = int(os.environ.get("MAX_CONSECUTIVE_429", "10"))
 
 NEON_URLS = {
     "do1997": os.environ["NEON_ZAKONY_DO1997_DB_URL"],
@@ -72,7 +73,18 @@ def get_admin_gemini_key():
     return key
 
 
-def embed_text(text, gemini_key, retries=3):
+class RateLimitStop(Exception):
+    """Vyvolano, kdyz pro dany Gemini klic (shard) narazime na MAX_CONSECUTIVE_429
+    chyb 429 v rade. Bez GEMINI_API_KEY_POOL maji vsechny shardy stejny klic,
+    takze v tom pripade se povazuji za vycerpane vsechny naraz - s poolem jen
+    ten jeden shard, jehoz klic je aktualne rate-limitovany, ostatni bezi dal."""
+
+
+_consecutive_429 = {}  # track_key (shard) -> pocet po sobe jdoucich 429 pro dany klic
+
+
+def embed_text(text, gemini_key, retries=3, track_key="default"):
+    global _consecutive_429
     last_status = None
     last_body = None
     for attempt in range(retries):
@@ -90,10 +102,18 @@ def embed_text(text, gemini_key, retries=3):
             last_status = resp.status_code
             last_body = resp.text[:300]
             if resp.status_code == 429:
+                n = _consecutive_429.get(track_key, 0) + 1
+                _consecutive_429[track_key] = n
+                if n >= MAX_CONSECUTIVE_429:
+                    raise RateLimitStop(
+                        f"{n} po sobe jdoucich 429 (rate limit) chyb pro klic shardu "
+                        f"'{track_key}' - koncim tento klic misto dalsiho plytvani casem."
+                    )
                 time.sleep(5 * (attempt + 1))
                 continue
             resp.raise_for_status()
             vec = resp.json().get("embedding", {}).get("values")
+            _consecutive_429[track_key] = 0
             return vec or None
         except requests.RequestException as e:
             last_status = getattr(getattr(e, "response", None), "status_code", None)
@@ -123,7 +143,9 @@ def embed_shard_batch(conn, gemini_key, shard_key):
         if time_left() <= 20:
             break
         try:
-            vec = embed_text(content, gemini_key)
+            vec = embed_text(content, gemini_key, track_key=shard_key)
+        except RateLimitStop:
+            raise
         except Exception as e:
             log(f"   [{shard_key}] WARN embed selhal {chunk_id}: {e}")
             continue
@@ -185,6 +207,7 @@ def main():
     totals = {key: 0 for key in NEON_URLS}
     exhausted = {key: False for key in NEON_URLS}
     zero_streak = {key: 0 for key in NEON_URLS}
+    rate_limited_shards = set()
     round_num = 0
 
     while time_left() > 30 and not all(exhausted.values()):
@@ -195,6 +218,16 @@ def main():
             try:
                 conn = ensure_conn(neon_conns, key)
                 done = embed_shard_batch(conn, shard_keys[key], key)
+            except RateLimitStop as e:
+                log(f"   [{key}] STOP: {e}")
+                rate_limited_shards.add(key)
+                exhausted[key] = True
+                if not GEMINI_API_KEY_POOL:
+                    # bez poolu maji vsechny shardy stejny klic - je vycerpany pro vsechny
+                    for k in exhausted:
+                        exhausted[k] = True
+                        rate_limited_shards.add(k)
+                done = 0
             except Exception as e:
                 log(f"   [{key}] CHYBA behem davky (zkusim znovu pristi kolo): {e}")
                 try:
@@ -223,7 +256,8 @@ def main():
             pass
 
     grand_total = sum(totals.values())
-    log(f"Hotovo. Celkem zembedovano {grand_total} chunku: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
+    suffix = f" (rate limit zastavil: {', '.join(sorted(rate_limited_shards))})" if rate_limited_shards else ""
+    log(f"Hotovo. Celkem zembedovano {grand_total} chunku: " + ", ".join(f"{k}={v}" for k, v in totals.items()) + suffix)
 
 
 if __name__ == "__main__":
