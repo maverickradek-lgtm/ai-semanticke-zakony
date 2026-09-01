@@ -1211,7 +1211,7 @@ const useNeonFs = typeFilter === 'metodika_fs';
 const useCelniNeon = typeFilter === 'metodika_celni';
 const useUoouNeon = typeFilter === 'metodika_uoou';
       const useUohsNeon = typeFilter === 'rozhodnuti_uohs';
- const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter);
+ const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter) || typeFilter === ''; // ZMENA 2026-08-31: 'Vse' (typeFilter=='') take musi jit do Neonu
 let data, error, count;
 if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
@@ -1266,6 +1266,14 @@ count = 0;
       const off = page * DB_PAGE_SIZE;
       try {
         const r = await callFn('uohs-neon-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
+        data = r.data; error = null; count = r.count;
+      } catch (e) {
+        data = null; error = e; count = 0;
+      }
+        } else if (useZakonyNeon) {
+      const off = page * DB_PAGE_SIZE;
+      try {
+        const r = await callFn('zakony-db', { action: 'list', doc_type: typeFilter || null, search: search || null, limit: DB_PAGE_SIZE, offset: off });
         data = r.data; error = null; count = r.count;
       } catch (e) {
         data = null; error = e; count = 0;
