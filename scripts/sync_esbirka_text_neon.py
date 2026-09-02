@@ -149,7 +149,13 @@ def upsert_law(conn, existing_entry, citace, meta, version_iri, doc_url):
             old_chunks = fetch_doc_chunks(conn, document_id)
             if old_chunks:
                 hist_id = str(uuid.uuid4())
-                version_suffix = (old_doc.get("version_iri") or "")[-40:]
+                # Radek (2026-09-02): stary version_iri byval obcas prazdny/NULL
+                # (napr. u dokumentu vytvorenych jinou cestou nez timto skriptem),
+                # coz davalo nerozlisitelny external_id tvaru "citace#hist-" bez
+                # koncovky - pri dalsim vyskytu stejne situace u stejne citace by
+                # to jeste kolidovalo. Padnout misto toho na hist_id samotne,
+                # ktere je vzdy unikatni.
+                version_suffix = (old_doc.get("version_iri") or "").strip()[-40:] or hist_id
                 archived_external_id = f"{citace}#hist-{version_suffix}"
 
                 with conn.cursor() as cur:
