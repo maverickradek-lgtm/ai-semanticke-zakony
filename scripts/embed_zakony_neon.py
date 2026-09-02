@@ -37,6 +37,16 @@ NEON_URLS = {
     "2021_dosud": os.environ["NEON_ZAKONY_2021_DOSUD_DB_URL"],
 }
 
+# Radek (2026-09-02): novejsi predpisy jsou prioritnejsi nez historie do roku 2000 -
+# vahy urcuji, kolikrat za "velke kolo" se dany shard zpracuje (viz build_round_schedule).
+# do1997 neni vyrazen uplne, jen zpomalen oproti ostatnim.
+SHARD_WEIGHTS = {
+    "do1997": 1,
+    "1998_2007": 1,
+    "2008_2020": 2,
+    "2021_dosud": 3,
+}
+
 START_TIME = time.time()
 
 
@@ -188,6 +198,16 @@ def ensure_conn(neon_conns, key):
     return conn
 
 
+def build_round_schedule():
+    """Vraci poradi shardu pro jedno 'velke kolo' podle SHARD_WEIGHTS - shard s
+    vahou 3 se v nem objevi 3x, shard s vahou 1 jen 1x. Tim dostavaji novejsi
+    (dulezitejsi) shardy vetsi podil casoveho rozpoctu nez stary do1997."""
+    schedule = []
+    for key, weight in SHARD_WEIGHTS.items():
+        schedule.extend([key] * weight)
+    return schedule
+
+
 def main():
     log("Zacinam embedding pending chunku ve 4 Neon shardech zakonu (round-robin)...")
 
@@ -221,9 +241,11 @@ def main():
     rate_limited_shards = set()
     round_num = 0
 
+    round_schedule = build_round_schedule()
+
     while time_left() > 30 and not all(exhausted.values()):
         round_num += 1
-        for key in list(neon_conns.keys()):
+        for key in round_schedule:
             if exhausted[key] or time_left() <= 30:
                 continue
             try:
