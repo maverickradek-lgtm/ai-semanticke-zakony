@@ -184,6 +184,24 @@ def upsert_law(conn, existing_entry, citace, meta, version_iri, doc_url):
                         },
                     )
 
+                    if cur.rowcount == 0:
+                        # archivni zaznam se stejnym external_id uz existoval (napr.
+                        # zbytek z puvodni migrace ze Supabase) - ON CONFLICT DO
+                        # NOTHING nic nevlozil, takze nove vygenerovany hist_id
+                        # neexistuje v documents. Dohledej skutecne id existujiciho
+                        # radku, jinak by insert chunku nize spadl na FK constraint
+                        # (presne tohle zpusobilo CHYBA u 86/2011 Sb. apod. v run #2).
+                        cur.execute(
+                            "select id from documents where source_id = %s and external_id = %s",
+                            (SOURCE_ID, archived_external_id),
+                        )
+                        existing_hist_row = cur.fetchone()
+                        if existing_hist_row:
+                            hist_id = str(existing_hist_row[0])
+                            # smaz pripadne stare chunky pod timhle hist_id, aby se
+                            # pri opakovanem konfliktu nehromadily duplicity
+                            cur.execute("delete from chunks where document_id = %s", (hist_id,))
+
                     hist_rows = []
                     for idx, (heading, content, embedding) in enumerate(old_chunks):
                         hist_rows.append(
