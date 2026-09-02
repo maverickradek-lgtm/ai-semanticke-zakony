@@ -165,24 +165,24 @@ def find_valid_citace():
     today = date.today().isoformat()
     valid = {}
     count = 0
-    for item in ijson.items(stream, "poloÅ¾ky.item"):
+    for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 10000 == 0:
             log(f"  ...prosel {count} zaznamu metadat")
-        if item.get("cis-esb-typ-prÃ¡vnÃ­-akt-poloÅ¾ka") != "PRAVPRED":
+        if item.get("cis-esb-typ-právní-akt-položka") != "PRAVPRED":
             continue
-        if item.get("metadata-datum-zruÅ¡enÃ­"):
+        if item.get("metadata-datum-zrušení"):
             continue
-        ucinnost_do = item.get("metadata-datum-ÃºÄinnosti-do")
+        ucinnost_do = item.get("metadata-datum-účinnosti-do")
         if ucinnost_do and ucinnost_do <= today:
             continue
         cit = item.get("akt-citace") or item.get("metadata-citace")
         if not cit:
             continue
-        subtype = item.get("cis-esb-podtyp-prÃ¡vnÃ­-akt-poloÅ¾ka")
+        subtype = item.get("cis-esb-podtyp-právní-akt-položka")
         valid[cit] = {
             "doc_type": SUBTYPE_TO_DOCTYPE.get(subtype, "jiny_predpis"),
-            "title": item.get("metadata-nÃ¡zev") or item.get("akt-nÃ¡zev-vyhlÃ¡Å¡enÃ½") or cit,
+            "title": item.get("metadata-název") or item.get("akt-název-vyhlášený") or cit,
         }
     log(f"Nalezeno {len(valid)} aktualne platnych pravnich predpisu (z {count} zaznamu historie)")
     return valid
@@ -194,7 +194,7 @@ def find_acts(valid_citace):
     wanted = set(valid_citace.keys())
     found = {}
     count = 0
-    for item in ijson.items(stream, "poloÅ¾ky.item"):
+    for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 10000 == 0:
             log(f"  ...prosel {count} zaznamu katalogu aktu")
@@ -208,7 +208,7 @@ def find_acts(valid_citace):
     return found
 
 def current_version_iri(act):
-    posledni = act.get("prÃ¡vnÃ­-akt-znÄnÃ­-poslednÃ­") or {}
+    posledni = act.get("právní-akt-znění-poslední") or {}
     return posledni.get("iri")
 
 def scan_version_fragments(version_iris):
@@ -220,7 +220,7 @@ def scan_version_fragments(version_iris):
     all_fragments = {v: [] for v in version_iris}
 
     count = 0
-    for item in ijson.items(stream, "poloÅ¾ky.item"):
+    for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 1_000_000 == 0:
             log(f"  ...prosel {count} zaznamu 003")
@@ -246,7 +246,7 @@ def scan_version_fragments(version_iris):
                 "hierarchie_hex": hierarchie_hex,
             })
         cit = item.get("zn\u011bn\u00ed-fragment-citace")
-        if cit and re.fullmatch(r"Â§\s*\d+[a-z]?", cit.strip()):
+        if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
             section_nodes[v].append({
                 "iri": iri,
                 "citace": cit,
@@ -276,7 +276,7 @@ def fetch_fragment_texts(all_fragment_ids):
     stream = fetch_gunzip_stream("004PravniAktFragment.json.gz")
     texts = {}
     count = 0
-    for item in ijson.items(stream, "poloÅ¾ky.item"):
+    for item in ijson.items(stream, "položky.item"):
         count += 1
         if count % 1000000 == 0:
             log(f"  ...prosel {count} zaznamu 004")
@@ -566,7 +566,7 @@ def main():
                 "external_id": citace,
                 "doc_type": meta["doc_type"],
                 "title": title,
-                "issuer": "SbÃ­rka zÃ¡konÅ¯",
+                "issuer": "Sbírka zákonů",
                 "url": doc_url,
                 "status": "platny",
                 "version_iri": version_iri,
