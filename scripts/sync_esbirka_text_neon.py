@@ -367,6 +367,17 @@ def main():
             log(f"! POZOR {citace}: existujici zaznam je v shardu {prev[2]}, rok {predpis_rok} by vysel na {target_shard} - ponechavam v {prev[2]}")
             target_shard = prev[2]
 
+        if prev is None and predpis_rok is not None and 1945 <= predpis_rok <= 1950:
+            # Radek (2026-09-02): agregovane poválečné vyhlášky/oznámení z let
+            # 1945-1950 (hlavně série "Úřední list", ne "Sbírka zákonů") byly po
+            # pečlivé rucni/AI kontrole zamerne vyrazeny z databaze jako
+            # obsoletni balast (viz projektova pamet
+            # aggregate_vyhlasky_1945_1950_investigation) - nove zaznamy z
+            # tohoto obdobi se uz znovu nepridavaji. Jiz existujici zaznamy
+            # (prev is not None) se ale i nadale normalne aktualizuji, pokud
+            # se jejich verze zmeni.
+            continue
+
         conn = neonlib.ensure_conn(neon_conns, target_shard)
 
         try:
