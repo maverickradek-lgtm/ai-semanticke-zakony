@@ -201,7 +201,18 @@ def main():
 
     neon_conns = {}
     for key, url in NEON_URLS.items():
-        neon_conns[key] = psycopg2.connect(url, connect_timeout=15)
+        last_err = None
+        for attempt in range(4):
+            try:
+                neon_conns[key] = psycopg2.connect(url, connect_timeout=15)
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                log(f"   [{key}] WARN pripojeni selhalo (pokus {attempt + 1}/4): {e}")
+                time.sleep(5 * (attempt + 1))
+        if last_err is not None:
+            raise last_err
     log(f"Pripojeno ke vsem {len(neon_conns)} shardum.")
 
     totals = {key: 0 for key in NEON_URLS}
