@@ -1223,6 +1223,7 @@ const useCelniNeon = typeFilter === 'metodika_celni';
 const useUoouNeon = typeFilter === 'metodika_uoou';
 const useIfrsNeon = typeFilter === 'metodika_ifrs';
       const useUohsNeon = typeFilter === 'rozhodnuti_uohs';
+      const useSoudniPrezkumNeon = typeFilter === 'soudni_prezkum_uohs';
  const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter) || typeFilter === ''; // ZMENA 2026-08-31: 'Vse' (typeFilter=='') take musi jit do Neonu
 let data, error, count;
 if (useSecondDb) {
