@@ -254,6 +254,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="judikat" checked> Judikát</label>
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="jiny_predpis" checked> Jiný předpis</label>
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="rozhodnuti_uohs" checked> Rozhodnutí ÚOHS</label>
+<label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="soudni_prezkum_uohs" checked> Soudní přezkum ÚOHS</label>
 <label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="qtf-item" value="duvodova_zprava" checked> Důvodová zpráva</label>
 <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" class="qtf-item" value="metodika" checked> Metodika</label>
 <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" class="qtf-item" value="ifrs" checked> Mezinárodní standardy (IFRS/IAS)</label>
@@ -337,6 +338,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <button type="button" class="chip" data-value="judikat">Judikát</button>
 <button type="button" class="chip" data-value="jiny_predpis">Jiný předpis</button>
 <button type="button" class="chip" data-value="rozhodnuti_uohs">Rozhodnutí ÚOHS</button>
+<button type="button" class="chip" data-value="soudni_prezkum_uohs">Soudní přezkum ÚOHS</button>
 <button type="button" class="chip" data-value="duvodova_zprava">Důvodová zpráva</button>
 <button type="button" class="chip" data-value="metodika">Metodika</button>
 <button type="button" class="chip" data-value="metodika_fs">Metodiky FS</button>
@@ -479,8 +481,9 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Zákony, vyhlášky, nařízení, dekrety (e-Sbírka):</strong> synchronizujeme z otevřených dat e-Sbírky, běžně denně. Starší (již nahrazená) znění předpisů appka eviduje, ale jejich plný text zatím záměrně nezpracováváme k vyhledávání – to je odložené, ne aktivně dokončované.</p>
 <p><strong>Judikatura Nejvyššího soudu (NS):</strong> čerpáme z kurátorované „Sbírky soudních rozhodnutí a stanovisek" – jde o reprezentativní výběr, ne o úplně všechna rozhodnutí NS.</p>
 <p><strong>Judikatura Nejvyššího správního soudu (NSS):</strong> obdobně, kurátorovaná sbírka, ne kompletní archiv.</p>
-<p><strong>Ústavní soud (ÚS):</strong> zatím nenapojeno – appka judikaturu Ústavního soudu prozatím nepokrývá.</p>
+<p><strong>Ústavní soud (ÚS):</strong> obecnou judikaturu Ústavního soudu appka prozatím nepokrývá – výjimkou je úzká podmnožina nálezů týkajících se soudního přezkumu rozhodnutí ÚOHS, viz níže.</p>
 <p><strong>Rozhodnutí ÚOHS:</strong> pokrýváme přibližně posledních 10 let.</p>
+<p><strong>Soudní přezkum rozhodnutí ÚOHS (krajské soudy, Ústavní soud):</strong> rozsudky krajských soudů a nálezy Ústavního soudu, které přezkoumávaly rozhodnutí ÚOHS ve věcech veřejných zakázek – čerpáme přímo z webu ÚOHS, aktualizujeme týdně. Rozsudky Nejvyššího správního soudu v této agendě jsou už zahrnuty v judikatuře NSS výše, zde záměrně nejsou duplicitně.</p>
 <p><strong>Metodiky a výkladová stanoviska (Ministerstvo financí – Centrální harmonizační jednotka, Finanční správa, Celní správa, ÚOOÚ):</strong> metodické pokyny a doporučení dotčených úřadů – nejde o právně závazné předpisy, ale o jejich výkladovou pomoc.</p>
 <p><strong>Mezinárodní účetní standardy (IFRS/IAS):</strong> pokrýváme 14 nejběžnějších standardů (IAS 1, 2, 12, 16, 21, 36, 37, 38 a IFRS 3, 9, 10, 13, 15, 16) v českém znění; nejde o kompletní sadu všech IFRS/IAS.</p>
 <p><strong>Důvodové zprávy k zákonům:</strong> dohledáváme a napojujeme automaticky, úspěšnost dohledání je zhruba 25–30 % – ne ke každému zákonu se podaří důvodovou zprávu najít.</p>
@@ -1178,12 +1181,13 @@ if (t === 'metodika_fs') return 'Metodiky FS';
 if (t === 'metodika_celni') return 'Metodiky Celní správy';
 if (t === 'metodika_uoou') return 'Metodiky ÚOOÚ';
 if (t === 'metodika_ifrs') return 'IFRS/IAS';
+if (t === 'soudni_prezkum_uohs') return 'Soudní přezkum ÚOHS';
 const map = { zakon: 'zákony', vyhlaska: 'vyhlášky', narizeni: 'nařízení', opatreni: 'opatření', dekret: 'dekrety', judikat: 'judikáty', jiny_predpis: 'jiné', rozhodnuti_uohs: 'ÚOHS', duvodova_zprava: 'Důvodová zpráva' };
 return map[t] || t;
 }
 
 async function loadDatabaseStats() {
-const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','jiny_predpis','duvodova_zprava','metodika','metodika_fs','metodika_celni','metodika_uoou','metodika_ifrs'];
+const types = ['zakon','vyhlaska','narizeni','opatreni','dekret','judikat','rozhodnuti_uohs','soudni_prezkum_uohs','jiny_predpis','duvodova_zprava','metodika','metodika_fs','metodika_celni','metodika_uoou','metodika_ifrs'];
 const el = $('db-stats');
 el.textContent = 'Načítám…';
 const results = await Promise.all(types.map(async t => {
@@ -1197,6 +1201,7 @@ if (t === 'metodika_celni') { try { const r = await callFn('celni-metodiky-db', 
 if (t === 'metodika_uoou') { try { const r = await callFn('uoou-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'metodika_ifrs') { try { const r = await callFn('ifrs-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'rozhodnuti_uohs') { try { const r = await callFn('uohs-neon-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
+if (t === 'soudni_prezkum_uohs') { try { const r = await callFn('uohs-neon-db', { action: 'stats', source: 'soudni_prezkum' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (ZAKONY_NEON_DOC_TYPES.has(t)) { try { const [sbRes, neonRes] = await Promise.all([ supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t).or('content_hash.is.null,content_hash.neq.__migrated_to_neon__'), callFn('zakony-db', { action: 'stats', doc_type: t }) ]); const sbCount = sbRes.count ?? 0; const neonCount = neonRes.count ?? 0; return { count: sbCount + neonCount }; } catch { return { count: 0 }; } }
 return supabase.from('documents').select('id', { count: 'exact', head: true }).eq('doc_type', t);
 }));
@@ -1285,6 +1290,14 @@ count = 0;
       const off = page * DB_PAGE_SIZE;
       try {
         const r = await callFn('uohs-neon-db', { action: 'list', search: search || null, limit: DB_PAGE_SIZE, offset: off });
+        data = r.data; error = null; count = r.count;
+      } catch (e) {
+        data = null; error = e; count = 0;
+      }
+        } else if (useSoudniPrezkumNeon) {
+      const off = page * DB_PAGE_SIZE;
+      try {
+        const r = await callFn('uohs-neon-db', { action: 'list', source: 'soudni_prezkum', search: search || null, limit: DB_PAGE_SIZE, offset: off });
         data = r.data; error = null; count = r.count;
       } catch (e) {
         data = null; error = e; count = 0;
