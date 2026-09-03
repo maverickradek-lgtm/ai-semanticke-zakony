@@ -1,0 +1,37 @@
+name: Sync UOHS soudni prezkum (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Max novych rozsudku za beh"
+        required: false
+        default: "150"
+  schedule:
+    - cron: "0 5 * * 1"
+
+concurrency:
+  group: sync-uohs-soudni-prezkum-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Run UOHS soudni prezkum sync (Neon)
+        env:
+          NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
+          GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_4 }}
+          MAX_ITEMS: ${{ github.event.inputs.max_items || '150' }}
+        run: python scripts/sync_uohs_soudni_prezkum_neon.py
