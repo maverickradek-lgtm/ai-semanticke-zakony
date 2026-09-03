@@ -303,6 +303,7 @@ def main():
             continue
 
         embedded = 0
+        conn = ensure_conn(conn)
         cur = conn.cursor()
         cur.execute("select id, content from chunks where document_id = %s order by chunk_index", (doc_id,))
         rows = cur.fetchall()
@@ -312,10 +313,15 @@ def main():
             if vec is None:
                 continue
             vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
-            cur2 = conn.cursor()
-            cur2.execute("update chunks set embedding = %s::vector where id = %s", (vec_str, chunk_id))
-            cur2.close()
-            embedded += 1
+            try:
+                conn = ensure_conn(conn)
+                cur2 = conn.cursor()
+                cur2.execute("update chunks set embedding = %s::vector where id = %s", (vec_str, chunk_id))
+                cur2.close()
+                embedded += 1
+            except Exception as e:
+                log(f"  ! update embeddingu selhal pro chunk {chunk_id}: {e}")
+                conn = ensure_conn(conn)
 
         log(f"+ {item['case_num']} ({item['issuer']}): {len(chunks)} chunku, {embedded} naembedovano")
         processed += 1
