@@ -27,6 +27,7 @@ superseded_by).
 
 import os
 import sys
+import time
 
 import psycopg2
 
