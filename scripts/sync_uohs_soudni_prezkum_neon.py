@@ -179,10 +179,26 @@ def clean_case_num(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+# Radek 2026-09-04: jen rozhodnuti od roku 2016 (stejny cutoff jako u
+# samotnych rozhodnuti UOHS - ucinnost zakona 134/2016 Sb.) - stare
+# skenovane rozsudky (2003-2015) se uz nemaji ani stahovat, ani embedovat.
+CUTOFF_YEAR = int(os.environ.get("CUTOFF_YEAR", "2016"))
+
+def extract_year(case_num):
+    m = re.search(r"/(\d{4})\b", case_num or "")
+    if m:
+        return int(m.group(1))
+    m2 = re.search(r"/(\d{2})\b", case_num or "")
+    if m2:
+        yy = int(m2.group(1))
+        return 2000 + yy if yy <= 79 else 1900 + yy
+    return None
+
 def fetch_pdf_links():
     """Vrati list dictu {case_num, url, issuer}, dedup podle url, bez nssoud.cz odkazu."""
     seen_urls = set()
     items = []
+    skipped_old_year = 0
     for list_url in LIST_URLS:
         try:
             resp = call_with_hard_timeout(45, SESSION.get, list_url, headers=REQ_HEADERS, timeout=30)
@@ -205,12 +221,17 @@ def fetch_pdf_links():
             case_num = clean_case_num(a.get_text())
             if not case_num:
                 continue
+            year = extract_year(case_num)
+            if year is not None and year < CUTOFF_YEAR:
+                skipped_old_year += 1
+                continue
             items.append({
                 "case_num": case_num,
                 "url": href,
                 "issuer": classify_issuer(case_num),
+                "year": year,
             })
-    log(f"Nalezeno {len(items)} unikatnich PDF odkazu (krajske soudy + Ustavni soud, NSS vynechan).")
+    log(f"Nalezeno {len(items)} unikatnich PDF odkazu od roku {CUTOFF_YEAR} (krajske soudy + Ustavni soud, NSS vynechan). Preskoceno (pred rokem {CUTOFF_YEAR}): {skipped_old_year}.")
     return items
 
 
