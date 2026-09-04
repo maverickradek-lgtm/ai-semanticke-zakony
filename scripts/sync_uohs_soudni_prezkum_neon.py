@@ -110,9 +110,17 @@ def embed_text(text, retries=3):
 
 
 def db_connect():
-    conn = psycopg2.connect(DB_URL, connect_timeout=15)
-    conn.autocommit = True
-    return conn
+    last_err = None
+    for attempt in range(4):
+        try:
+            conn = psycopg2.connect(DB_URL, connect_timeout=15)
+            conn.autocommit = True
+            return conn
+        except Exception as e:
+            last_err = e
+            log(f"  ! db_connect selhalo (pokus {attempt + 1}/4): {e}")
+            time.sleep(3)
+    raise last_err
 
 
 def ensure_conn(conn):
@@ -179,18 +187,29 @@ def fetch_pdf_links():
 
 
 def existing_urls(conn, urls):
+    """Vraci (mnozina existujicich url, aktualni/pripadne obnovene spojeni)."""
     if not urls:
-        return set()
-    cur = conn.cursor()
+        return set(), conn
     out = set()
     CHUNK = 500
     urls = list(urls)
     for i in range(0, len(urls), CHUNK):
         batch = urls[i:i + CHUNK]
-        cur.execute("select url from documents where source = 'soudni_prezkum' and url = any(%s)", (batch,))
-        out.update(r[0] for r in cur.fetchall())
-    cur.close()
-    return out
+        for attempt in range(2):
+            try:
+                conn = ensure_conn(conn)
+                cur = conn.cursor()
+                cur.execute("select url from documents where source = 'soudni_prezkum' and url = any(%s)", (batch,))
+                out.update(r[0] for r in cur.fetchall())
+                cur.close()
+                break
+            except Exception as e:
+                if attempt == 0:
+                    log(f"  ! existing_urls dotaz selhal, zkousim znovu: {e}")
+                    conn = ensure_conn(conn)
+                else:
+                    raise
+    return out, conn
 
 
 def extract_pdf_text(pdf_bytes: bytes) -> str:
@@ -260,7 +279,7 @@ def main():
     conn = db_connect()
     items = fetch_pdf_links()
     urls_to_check = [it["url"] for it in items]
-    already = existing_urls(conn, urls_to_check)
+    already, conn = existing_urls(conn, urls_to_check)
     new_items = [it for it in items if it["url"] not in already]
     log(f"Uz v databazi: {len(already)}. Novych ke zpracovani: {len(new_items)} (limit tohoto behu: {MAX_ITEMS}).")
 
@@ -297,9 +316,11 @@ def main():
             continue
 
         try:
+            conn = ensure_conn(conn)
             doc_id = insert_document(conn, item, chunks)
         except Exception as e:
             log(f"! insert selhal ({item['case_num']}): {e}")
+            conn = ensure_conn(conn)
             continue
 
         embedded = 0
