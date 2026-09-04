@@ -29,6 +29,20 @@ import os
 import sys
 
 import psycopg2
+
+def db_connect(url, timeout=15):
+    """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
+    docasny DNS vypadek (Temporary failure in name resolution), jednorazovy
+    pokus bez retry pak shodi cely beh zbytecne."""
+    last_err = None
+    for attempt in range(4):
+        try:
+            return psycopg2.connect(url, connect_timeout=timeout)
+        except Exception as e:
+            last_err = e
+            print("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
+            time.sleep(3)
+    raise last_err
 import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -129,7 +143,7 @@ def get_supabase_chunk_counts(doc_ids):
 def get_neon_all_chunk_counts(shard_key):
     """Pro dany shard vrati {doc_id: pocet_chunku} pro VSECHNY dokumenty
     (bez ohledu na embedding) - dukaz, ze Neon uz ma kompletni kopii."""
-    conn = psycopg2.connect(NEON_URLS[shard_key], connect_timeout=15)
+    conn = db_connect(NEON_URLS[shard_key])
     try:
         with conn.cursor() as cur:
             cur.execute(
