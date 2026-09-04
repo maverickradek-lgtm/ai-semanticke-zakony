@@ -30,6 +30,7 @@ import os
 import re
 import sys
 import time
+import signal
 import hashlib
 from datetime import datetime, timezone
 
@@ -39,6 +40,31 @@ import psycopg2
 import psycopg2.extras
 from pypdf import PdfReader
 from io import BytesIO
+
+
+class HardTimeout(Exception):
+    """Vyvolano, kdyz sitove volani prekroci tvrdy wall-clock limit (napr.
+    DNS resolver se zasekne - to standardni 'timeout=' parametr v requests
+    nepokryje, protoze getaddrinfo() neni omezen socket timeoutem)."""
+    pass
+
+
+def _hard_timeout_handler(signum, frame):
+    raise HardTimeout("tvrdy timeout - sitove volani se zaseklo (mozna DNS)")
+
+
+def call_with_hard_timeout(seconds, fn, *args, **kwargs):
+    """Spusti fn(*args, **kwargs) s tvrdym wall-clock limitem pres SIGALRM.
+    Funguje i kdyz se zasekne DNS resolver uvnitr requests (coz obycejny
+    'timeout=' parametr nezachyti). Jen na Linuxu (self-hosted runner je
+    Linux Docker kontejner, takze OK)."""
+    old_handler = signal.signal(signal.SIGALRM, _hard_timeout_handler)
+    signal.alarm(seconds)
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 DB_URL = os.environ["NEON_UOHS_DB_URL"]
 GEMINI_KEY_POOL = [k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL", os.environ.get("GEMINI_API_KEY", "")).split(",") if k.strip()]
@@ -85,7 +111,9 @@ def embed_text(text, retries=3):
         if not key:
             return None
         try:
-            resp = requests.post(
+            resp = call_with_hard_timeout(
+                45,
+                requests.post,
                 f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent",
                 headers={"Content-Type": "application/json", "x-goog-api-key": key},
                 json={
@@ -157,7 +185,7 @@ def fetch_pdf_links():
     items = []
     for list_url in LIST_URLS:
         try:
-            resp = SESSION.get(list_url, headers=REQ_HEADERS, timeout=30)
+            resp = call_with_hard_timeout(45, SESSION.get, list_url, headers=REQ_HEADERS, timeout=30)
             resp.raise_for_status()
         except Exception as e:
             log(f"! nepodarilo se nacist {list_url}: {e}")
@@ -297,7 +325,7 @@ def main():
 
         conn = ensure_conn(conn)
         try:
-            pdf_resp = SESSION.get(item["url"], headers=REQ_HEADERS, timeout=30)
+            pdf_resp = call_with_hard_timeout(45, SESSION.get, item["url"], headers=REQ_HEADERS, timeout=30)
             pdf_resp.raise_for_status()
         except Exception as e:
             log(f"! stazeni selhalo ({item['case_num']}): {e}")
