@@ -68,6 +68,20 @@ import os
 import sys
 import time
 import psycopg2
+
+def db_connect(url, timeout=15):
+    """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
+    docasny DNS vypadek (Temporary failure in name resolution), jednorazovy
+    pokus bez retry pak shodi cely beh zbytecne."""
+    last_err = None
+    for attempt in range(4):
+        try:
+            return psycopg2.connect(url, connect_timeout=timeout)
+        except Exception as e:
+            last_err = e
+            print("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
+            time.sleep(3)
+    raise last_err
 import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -284,7 +298,7 @@ def get_neon_present(shard_key):
     v Neonu alespon 1 chunk (prazdny/rozbity dokument se nepocita jako
     pritomny). Embedding se ZAMERNE nevyzaduje - viz zmena 2026-08-29
     v hlavnim docstringu modulu."""
-    conn = psycopg2.connect(NEON_URLS[shard_key], connect_timeout=15)
+    conn = db_connect(NEON_URLS[shard_key])
     try:
         with conn.cursor() as cur:
             cur.execute(
