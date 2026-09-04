@@ -71,6 +71,17 @@ def log(*a):
 def time_left():
     return TIME_BUDGET_SECONDS - (time.time() - START_TIME)
 
+def db_connect():
+    last_err = None
+    for attempt in range(4):
+        try:
+            return psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+        except Exception as e:
+            last_err = e
+            log("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e))
+            time.sleep(3)
+    raise last_err
+
 
 def sb_headers():
     return {
@@ -123,7 +134,7 @@ def ensure_conn(conn):
                 conn.close()
             except Exception:
                 pass
-    new_conn = psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+    new_conn = db_connect()
     log("(znovu navazano spojeni)")
     return new_conn
 
@@ -396,7 +407,7 @@ def embed_pending(conn, gemini_keys):
 def main():
     log("=== UOHS sync (Neon): start ===")
     log("MAX_ITEMS=" + str(MAX_ITEMS) + ", CUTOFF_DATE=" + CUTOFF_DATE)
-    conn = psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+    conn = db_connect()
     try:
         ensure_schema(conn)
         conn = import_new_documents(conn)
