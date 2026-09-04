@@ -16,6 +16,20 @@ import os
 import sys
 import time
 import psycopg2
+
+def db_connect(url, timeout=15):
+    """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
+    docasny DNS vypadek (Temporary failure in name resolution), jednorazovy
+    pokus bez retry pak shodi cely beh zbytecne."""
+    last_err = None
+    for attempt in range(4):
+        try:
+            return psycopg2.connect(url, connect_timeout=timeout)
+        except Exception as e:
+            last_err = e
+            print("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
+            time.sleep(3)
+    raise last_err
 import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -192,7 +206,7 @@ def ensure_conn(neon_conns, key):
                 conn.close()
             except Exception:
                 pass
-    conn = psycopg2.connect(NEON_URLS[key], connect_timeout=15)
+    conn = db_connect(NEON_URLS[key])
     neon_conns[key] = conn
     log(f"   [{key}] (znovu navazano spojeni)")
     return conn
@@ -224,7 +238,7 @@ def main():
         last_err = None
         for attempt in range(4):
             try:
-                neon_conns[key] = psycopg2.connect(url, connect_timeout=15)
+                neon_conns[key] = db_connect(url)
                 last_err = None
                 break
             except Exception as e:
