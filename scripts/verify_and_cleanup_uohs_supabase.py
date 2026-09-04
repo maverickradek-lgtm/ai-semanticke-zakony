@@ -19,6 +19,7 @@ Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
 
 import os
 import sys
+import time
 
 import psycopg2
 import requests
