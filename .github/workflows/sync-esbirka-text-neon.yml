@@ -5,6 +5,12 @@ name: Sync e-Sbirka - text primo do Neonu (FAZE A, bez Supabase mezikroku)
 # zustava spustitelny jen rucne z GitHub Actions UI ("Run workflow").
 on:
   workflow_dispatch: {}
+  schedule:
+    # denni v 04:15 UTC (05:15/06:15 CET/CEST) - bezi na ubuntu-latest (GitHub-hosted),
+    # nekoliduje s NAS self-hosted runnerem (migrate/embed zakony, sync-uohs atd.)
+    # ani s jinym ubuntu-latest jobem (sync-psp-tisky v 06:00 UTC).
+    # Radek 2026-09-05: potvrzeno ze skript pise jen do Neonu, ne do Supabase.
+    - cron: '15 4 * * *'
 
 concurrency:
   group: sync-esbirka-text-neon-solo
