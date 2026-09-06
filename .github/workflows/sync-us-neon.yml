@@ -1,0 +1,69 @@
+name: Sync US Neon (NALUS)
+
+# ZAMERNE POUZE workflow_dispatch - ZADNY schedule/cron.
+# Radek 2026-09-06: pipeline pro Ustavni soud je pripravena, ale NEMA se
+# spoustet dokud prioritou zustava dobehnuti embed_zakony_neon.py na NAS
+# runneru. Nespoustet rucne ani automaticky dokud Radek nerekne "nasad'".
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'backfill nebo incremental'
+        required: true
+        default: 'incremental'
+        type: choice
+        options:
+          - backfill
+          - incremental
+      year_from:
+        description: 'Backfill: od roku'
+        required: false
+        default: '1993'
+      year_to:
+        description: 'Backfill: do roku'
+        required: false
+        default: ''
+      days:
+        description: 'Incremental: prirustky za poslednich N dni'
+        required: false
+        default: '3'
+
+concurrency:
+  group: sync-us-neon
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Run sync (backfill)
+        if: ${{ inputs.mode == 'backfill' }}
+        env:
+          NEON_US_DB_URL: ${{ secrets.NEON_US_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python scripts/sync_us_neon.py --mode backfill \
+            --year-from "${{ inputs.year_from }}" \
+            ${{ inputs.year_to != '' && format('--year-to {0}', inputs.year_to) || '' }}
+
+      - name: Run sync (incremental)
+        if: ${{ inputs.mode == 'incremental' }}
+        env:
+          NEON_US_DB_URL: ${{ secrets.NEON_US_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python scripts/sync_us_neon.py --mode incremental --days "${{ inputs.days }}"
