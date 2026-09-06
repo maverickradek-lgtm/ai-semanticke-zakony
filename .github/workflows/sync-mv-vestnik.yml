@@ -1,0 +1,38 @@
+name: Sync MV Vestnik (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_new_docs:
+        description: "Max novych dokumentu za beh"
+        required: false
+        default: "100"
+  schedule:
+    - cron: "30 5 1 * *"
+
+concurrency:
+  group: sync-mv-vestnik-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Run MV Vestnik sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_MV_DB_URL: ${{ secrets.NEON_MV_DB_URL }}
+          MAX_NEW_DOCS_PER_RUN: ${{ inputs.max_new_docs || '100' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/sync_mv_vestnik_neon.py
