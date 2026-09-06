@@ -84,6 +84,16 @@ EVENTVALIDATION_RE = re.compile(r'id="__EVENTVALIDATION"[^>]*value="([^"]*)"')
 TOTAL_RE = re.compile(r'celkem\s+(\d+)', re.IGNORECASE)
 DETAIL_ID_RE = re.compile(r'ResultDetail\.aspx\?id=(\d+)')
 
+# NEON_UOHS_DB_URL uz existuje jako GitHub secret pro puvodni UOHS pipeline
+# (viz sync_uohs_neon.py / sync_uohs_soudni_prezkum_neon.py) - nalezy Ustavniho
+# soudu ve vecech verejnych zakazek se ukladaji primo tam (documents.source =
+# 'soudni_prezkum', documents.issuer ILIKE '%stavn%', sp. zn. je vytazena z
+# documents.title, napr. "Nalez Ustavni soud - sp. zn. III.US 1796/17").
+# Aby se stejny nalez nestahoval a needuboval i sem, pred kazdym behem se
+# natahne mnozina jiz existujicich sp. zn. z UOHS Neonu a shoda se preskoci.
+NEON_UOHS_DB_URL = os.environ.get("NEON_UOHS_DB_URL")
+SPZN_IN_TITLE_RE = re.compile(r'sp\.?\s*zn\.?\s*([IVXLCDM]+\.\s*ÚS\s*\d+\s*/\s*\d+)', re.IGNORECASE)
+
 
 def log(msg):
     print(f"[sync_us_neon] {msg}", flush=True)
@@ -141,6 +151,57 @@ def parse_cz_date(s):
         return date(y, mo, d)
     except ValueError:
         return None
+
+
+def normalize_spzn(s):
+    """'I.US 3256/23' / 'I. US 3256 / 23' -> 'I.US3256/23' (bez mezer, velka pismena),
+    aby slo spolehlive porovnavat sp. zn. mezi NALUS a UOHS soudnim prezkumem."""
+    if not s:
+        return None
+    return re.sub(r'\s+', '', s).upper()
+
+
+def get_uohs_soudni_prezkum_spzn_set():
+    """Nacte mnozinu sp. zn. nalezu US, ktere uz mame ulozene v UOHS Neonu
+    (documents.source='soudni_prezkum'), aby se stejny nalez nestahoval znovu
+    do teto samostatne US databaze. Pri jakemkoliv selhani (chybejici secret,
+    vypadek site) se vraci prazdna mnozina a sync pokracuje normalne - tato
+    kontrola je optimalizace/deduplikace, ne kriticka zavislost."""
+    if not NEON_UOHS_DB_URL:
+        log("NEON_UOHS_DB_URL neni nastaveno - preskakuji kontrolu duplicit s UOHS soudnim prezkumem")
+        return set()
+    conn = None
+    last_err = None
+    for attempt in range(4):
+        try:
+            conn = psycopg2.connect(NEON_UOHS_DB_URL, connect_timeout=15)
+            break
+        except Exception as e:
+            last_err = e
+            log(f"pripojeni k UOHS Neon (kontrola duplicit) selhalo (pokus {attempt + 1}/4): {e}")
+            time.sleep(3)
+    if conn is None:
+        log(f"nepodarilo se pripojit k UOHS Neon, preskakuji kontrolu duplicit: {last_err}")
+        return set()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT title FROM documents WHERE source = 'soudni_prezkum' AND issuer ILIKE %s",
+                ('%stavn%',),
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        log(f"dotaz na UOHS Neon (kontrola duplicit) selhal, preskakuji kontrolu: {e}")
+        return set()
+    finally:
+        conn.close()
+    result = set()
+    for (title,) in rows:
+        m = SPZN_IN_TITLE_RE.search(title or "")
+        if m:
+            result.add(normalize_spzn(m.group(1)))
+    log(f"UOHS soudni prezkum: {len(result)} jiz existujicich nalezu US (budou preskoceny)")
+    return result
 
 
 def chunk_text(text, size=CHUNK_SIZE):
@@ -402,7 +463,9 @@ def embed_pending(conn, api_key, limit=200):
 def run_backfill(year_from, year_to):
     conn = db_connect()
     api_key = get_admin_gemini_key()
+    skip_spzn = get_uohs_soudni_prezkum_spzn_set()
     total_new = 0
+    total_skipped_duplicate = 0
     for year in range(year_from, year_to + 1):
         session = NalusSession()
         decided_from = f"1.1.{year}"
@@ -425,6 +488,10 @@ def run_backfill(year_from, year_to):
                 continue
             if not doc:
                 continue
+            if skip_spzn and normalize_spzn(doc.get("sp_zn")) in skip_spzn:
+                log(f"id={doc_id} (sp. zn. {doc.get('sp_zn')}): jiz v UOHS soudnim prezkumu, preskakuji")
+                total_skipped_duplicate += 1
+                continue
             try:
                 _, changed = upsert_document(conn, doc)
             except Exception as e:
@@ -437,17 +504,19 @@ def run_backfill(year_from, year_to):
             time.sleep(0.3)
         log(f"rok {year}: {count_year} novych/zmenenych dokumentu")
         embed_pending(conn, api_key)
-    log(f"backfill hotovo, celkem {total_new} novych/zmenenych dokumentu")
+    log(f"backfill hotovo, celkem {total_new} novych/zmenenych dokumentu, {total_skipped_duplicate} preskoceno (jiz v UOHS soudnim prezkumu)")
     conn.close()
 
 
 def run_incremental(days):
     conn = db_connect()
     api_key = get_admin_gemini_key()
+    skip_spzn = get_uohs_soudni_prezkum_spzn_set()
     session = NalusSession()
     total, first_html = session.search_recent(days)
     log(f"prirustky za {days} dni: {total} zaznamu")
     count = 0
+    skipped_duplicate = 0
     if total > 0:
         for doc_id in session.iter_ids(total, first_html):
             try:
@@ -456,6 +525,10 @@ def run_incremental(days):
                 log(f"id={doc_id}: fetch_detail selhal: {e}")
                 continue
             if not doc:
+                continue
+            if skip_spzn and normalize_spzn(doc.get("sp_zn")) in skip_spzn:
+                log(f"id={doc_id} (sp. zn. {doc.get('sp_zn')}): jiz v UOHS soudnim prezkumu, preskakuji")
+                skipped_duplicate += 1
                 continue
             try:
                 _, changed = upsert_document(conn, doc)
@@ -467,7 +540,7 @@ def run_incremental(days):
                 count += 1
             time.sleep(0.3)
     embed_pending(conn, api_key)
-    log(f"incremental hotovo, {count} novych/zmenenych dokumentu")
+    log(f"incremental hotovo, {count} novych/zmenenych dokumentu, {skipped_duplicate} preskoceno (jiz v UOHS soudnim prezkumu)")
     conn.close()
 
 
