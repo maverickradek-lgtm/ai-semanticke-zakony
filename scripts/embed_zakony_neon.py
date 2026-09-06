@@ -84,17 +84,25 @@ def sb_headers():
 def get_admin_gemini_key():
     if GEMINI_API_KEY_OVERRIDE:
         return GEMINI_API_KEY_OVERRIDE
-    r = requests.post(
-        f"{SUPABASE_URL}/rest/v1/rpc/get_user_gemini_key",
-        headers=sb_headers(),
-        json={"p_user_id": ADMIN_USER_ID},
-        timeout=30,
-    )
-    r.raise_for_status()
-    key = r.json()
-    if not key:
-        raise RuntimeError("Admin Gemini key neni k dispozici")
-    return key
+    last_err = None
+    for attempt in range(4):
+        try:
+            r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/get_user_gemini_key",
+                headers=sb_headers(),
+                json={"p_user_id": ADMIN_USER_ID},
+                timeout=30,
+            )
+            r.raise_for_status()
+            key = r.json()
+            if not key:
+                raise RuntimeError("Admin Gemini key neni k dispozici")
+            return key
+        except Exception as e:
+            last_err = e
+            print("get_admin_gemini_key selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
+            time.sleep(3)
+    raise last_err
 
 
 class RateLimitStop(Exception):
