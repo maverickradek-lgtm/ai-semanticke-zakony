@@ -608,7 +608,7 @@ actions.innerHTML = '';
 }
 
 function showView(view) {
-hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view'));
+hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view')); hide($('doc-review-section')); hide($('answer-card'));
 if (view === 'settings') {
 show($('settings-view'));
 loadPredpisRequests();
@@ -623,6 +623,7 @@ loadDatabaseStats();
 loadDatabaseList(0);
 } else {
 show($('dashboard-view'));
+show($('doc-review-section'));
 }
 }
 
