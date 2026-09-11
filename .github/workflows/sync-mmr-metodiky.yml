@@ -1,0 +1,35 @@
+name: Sync MMR Metodiky (Neon)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_new_docs:
+        description: Maximalni pocet novych dokumentu za beh
+        required: false
+        default: "100"
+  schedule:
+    - cron: "30 6 1 * *"
+
+jobs:
+  sync:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 pypdf psycopg2-binary
+
+      - name: Run sync
+        env:
+          NEON_MMR_DB_URL: ${{ secrets.NEON_MMR_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAX_NEW_DOCS_PER_RUN: ${{ github.event.inputs.max_new_docs || '100' }}
+          TIME_BUDGET_SECONDS: "3000"
+        run: python scripts/sync_mmr_metodiky.py
