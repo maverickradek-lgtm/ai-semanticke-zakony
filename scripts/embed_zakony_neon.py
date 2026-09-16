@@ -56,9 +56,9 @@ NEON_URLS = {
 # do1997 neni vyrazen uplne, jen zpomalen oproti ostatnim.
 SHARD_WEIGHTS = {
     "do1997": 1,
-    "1998_2007": 1,
-    "2008_2020": 2,
-    "2021_dosud": 3,
+    "1998_2007": 2,
+    "2008_2020": 3,
+    "2021_dosud": 4,
 }
 
 START_TIME = time.time()
