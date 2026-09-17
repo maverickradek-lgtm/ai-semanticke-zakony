@@ -1,0 +1,35 @@
+name: Uklid osirelych souboru v chunk-content (Supabase Storage)
+
+# Rucni spousteni pouze (zadny cron) - jde o mazani dat, ma se spoustet
+# jen kdyz to Radek vedome kliknutim potvrdi. Vychozi DRY_RUN=true jen
+# spocita a nic nesmaze - pro skutecne smazani je treba spustit znovu
+# s dry_run=false.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = jen spocitat a vypsat (nic nemazat), false = opravdu smazat"
+        required: false
+        default: "true"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Uklid osirelych objektu
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+        run: python scripts/cleanup_orphaned_chunk_storage.py
