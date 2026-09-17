@@ -38,6 +38,14 @@ jobs:
     runs-on: [self-hosted, nas]
     timeout-minutes: 300
     steps:
+      - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
+        run: |
+          for i in $(seq 1 30); do
+            getent hosts github.com >/dev/null 2>&1 && echo "DNS OK" && break
+            echo "DNS zatim nedostupne, cekam 10s... ($i/30)"
+            sleep 10
+          done
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
