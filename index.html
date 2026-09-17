@@ -187,6 +187,7 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <button id="btn-signin">Přihlásit se</button>
 <button class="secondary" id="btn-signup">Vytvořit účet</button>
 </div>
+<p style="margin-top:8px"><a class="link-btn" id="open-forgot-password-link" href="#">Zapomenuté heslo?</a></p>
 </div>
 
 <!-- PENDING APPROVAL / ZKUŠEBNÍ PROVOZ -->
@@ -480,6 +481,33 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 <p><strong>Vaše práva:</strong> přístup ke svým údajům, jejich oprava a přenositelnost – napište nám přes odkaz „Kontakt" v patičce appky. Účet i všechna svá data (uložený Gemini klíč, historii používání) si můžete kdykoliv sami trvale smazat v Nastavení tlačítkem „Smazat účet", nebo o to můžete požádat správce appky, který to udělá za vás.</p>
 <p><strong>Cookies:</strong> nepoužíváme sledovací cookies třetích stran, jen technickou přihlašovací session appky uloženou lokálně ve vašem prohlížeči.</p>
 <p class="muted" style="font-size:12px;">Poslední aktualizace: červenec 2026.</p>
+</div>
+</div>
+</div>
+<div id="forgot-password-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:420px;width:100%;position:relative;">
+<button id="forgot-password-modal-close" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+<h3 style="margin-top:0;">Zapomenuté heslo</h3>
+<p class="muted" style="font-size:13px;">Zadejte e-mail, na který vám pošleme odkaz pro nastavení nového hesla.</p>
+<label for="forgot-password-email">E-mail</label>
+<input type="email" id="forgot-password-email" placeholder="vas@email.cz">
+<div id="forgot-password-error" class="error hidden"></div>
+<div id="forgot-password-ok" class="ok-msg hidden"></div>
+<div class="row" style="margin-top:12px;">
+<button id="btn-forgot-password-send">Poslat odkaz na reset hesla</button>
+</div>
+</div>
+</div>
+<div id="set-new-password-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;">
+<div style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:24px;max-width:420px;width:100%;position:relative;">
+<h3 style="margin-top:0;">Nastavit nové heslo</h3>
+<p class="muted" style="font-size:13px;">Zadejte nové heslo ke svému účtu.</p>
+<label for="new-password-input">Nové heslo</label>
+<input type="password" id="new-password-input" placeholder="••••••••">
+<div id="new-password-error" class="error hidden"></div>
+<div id="new-password-ok" class="ok-msg hidden"></div>
+<div class="row" style="margin-top:12px;">
+<button id="btn-set-new-password">Nastavit heslo</button>
 </div>
 </div>
 </div>
@@ -778,12 +806,54 @@ $('auth-error').textContent = 'Heslo musí mít alespoň 6 znaků.';
 show($('auth-error'));
 return;
 }
-const { error } = await supabase.auth.signUp({ email, password });
+const { data, error } = await supabase.auth.signUp({ email, password });
 if (error) { $('auth-error').textContent = error.message; show($('auth-error')); return; }
+if (data && data.session) {
 $('auth-ok').textContent = 'Účet vytvořen. Nyní čeká na schválení správcem aplikace.';
 show($('auth-ok'));
 await loadProfile();
+} else {
+$('auth-ok').textContent = 'Účet vytvořen. Zkontrolujte prosím svůj e-mail a potvrďte registraci kliknutím na odkaz, poté se přihlaste.';
+show($('auth-ok'));
+}
 };
+
+$('open-forgot-password-link').onclick = (e) => {
+e.preventDefault();
+hide($('auth-error')); hide($('auth-ok'));
+$('forgot-password-email').value = $('auth-email').value.trim();
+hide($('forgot-password-error')); hide($('forgot-password-ok'));
+show($('forgot-password-modal'));
+};
+$('forgot-password-modal-close').onclick = () => { hide($('forgot-password-modal')); };
+$('forgot-password-modal').addEventListener('click', (e) => { if (e.target === $('forgot-password-modal')) hide($('forgot-password-modal')); });
+$('btn-forgot-password-send').onclick = async () => {
+hide($('forgot-password-error')); hide($('forgot-password-ok'));
+const fpEmail = $('forgot-password-email').value.trim();
+if (!fpEmail) { $('forgot-password-error').textContent = 'Zadejte e-mail.'; show($('forgot-password-error')); return; }
+const { error: fpError } = await supabase.auth.resetPasswordForEmail(fpEmail, { redirectTo: window.location.origin + window.location.pathname });
+if (fpError) { $('forgot-password-error').textContent = fpError.message; show($('forgot-password-error')); return; }
+$('forgot-password-ok').textContent = 'Pokud e-mail existuje, poslali jsme na něj odkaz pro nastavení nového hesla.';
+show($('forgot-password-ok'));
+};
+$('btn-set-new-password').onclick = async () => {
+hide($('new-password-error')); hide($('new-password-ok'));
+const newPw = $('new-password-input').value;
+if (newPw.length < 6) { $('new-password-error').textContent = 'Heslo musí mít alespoň 6 znaků.'; show($('new-password-error')); return; }
+const { error: pwError } = await supabase.auth.updateUser({ password: newPw });
+if (pwError) { $('new-password-error').textContent = pwError.message; show($('new-password-error')); return; }
+$('new-password-ok').textContent = 'Heslo bylo změněno. Přihlašuji...';
+show($('new-password-ok'));
+setTimeout(() => { hide($('set-new-password-modal')); location.reload(); }, 1500);
+};
+supabase.auth.onAuthStateChange((event, session) => {
+if (event === 'PASSWORD_RECOVERY') {
+hide($('forgot-password-modal'));
+hide($('new-password-error')); hide($('new-password-ok'));
+$('new-password-input').value = '';
+show($('set-new-password-modal'));
+}
+});
 
 $('btn-logout-pending').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
 $('btn-logout-rejected').onclick = async () => { await supabase.auth.signOut(); location.reload(); };
