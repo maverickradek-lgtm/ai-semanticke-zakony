@@ -1,0 +1,10 @@
+# Netlify build konfigurace
+#
+# "ignore" prikaz: prepocita rozdil mezi poslednim nasazenym commitem a
+# novym commitem, ale ignoruje zmeny ve slozkach .github (automaticke ulohy)
+# a scripts (zalohovaci/synchronizacni skripty) - ty nemaji na vzhled ani
+# obsah nasazene appky zadny vliv. Pokud se zmenilo jen tohle, Netlify
+# nove nasazeni PRESKOCI (setri kredity). Zmena v cemkoliv jinem (index.html,
+# data/...) nasazeni spusti jako doted.
+[build]
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':!.github' ':!scripts'"
