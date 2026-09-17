@@ -87,9 +87,11 @@ def list_all_objects() -> list:
         r = SESSION.post(
             f"{SUPABASE_URL}/storage/v1/object/list/{BUCKET}",
             headers=sb_headers(),
-            json={"limit": LIST_PAGE_SIZE, "offset": offset, "sortBy": {"column": "name", "order": "asc"}},
+            json={"prefix": "", "limit": LIST_PAGE_SIZE, "offset": offset, "sortBy": {"column": "name", "order": "asc"}},
             timeout=30,
         )
+        if not r.ok:
+            log(f"   list_all_objects chyba {r.status_code}: {r.text[:500]}")
         r.raise_for_status()
         rows = r.json()
         if not rows:
