@@ -21,10 +21,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install PostgreSQL client 18 (PGDG repo - Neon bezi na PG18, potrebuje novejsi pg_dump nez vychozi apt balicek)
         run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          pip install google-api-python-client google-auth
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
+          sudo gpg --batch --yes --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: pip install google-api-python-client google-auth
 
       - name: Run backup
         env:
