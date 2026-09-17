@@ -36,7 +36,9 @@ jobs:
 
       - name: Run backup
         env:
-          GDRIVE_SA_KEY_JSON: ${{ secrets.GDRIVE_SA_KEY_JSON }}
+          GDRIVE_OAUTH_CLIENT_ID: ${{ secrets.GDRIVE_OAUTH_CLIENT_ID }}
+          GDRIVE_OAUTH_CLIENT_SECRET: ${{ secrets.GDRIVE_OAUTH_CLIENT_SECRET }}
+          GDRIVE_OAUTH_REFRESH_TOKEN: ${{ secrets.GDRIVE_OAUTH_REFRESH_TOKEN }}
           SUPABASE_MAIN_DB_URL: ${{ secrets.SUPABASE_MAIN_DB_URL }}
           SUPABASE_JUDIKATURA_DB_URL: ${{ secrets.SUPABASE_JUDIKATURA_DB_URL }}
           NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
