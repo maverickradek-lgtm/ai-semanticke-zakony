@@ -347,6 +347,7 @@ def main():
     done = 0
     updated = 0
     per_shard = {k: 0 for k in neonlib.NEON_URLS}
+    skipped_empty = 0
 
     for citace, version_iri in version_iri_by_citace.items():
         if time_left() <= 120:
@@ -386,39 +387,60 @@ def main():
 
         conn = neonlib.ensure_conn(neon_conns, target_shard)
 
+        section_nodes = section_nodes_by_version[version_iri]
+        by_section = by_section_by_version[version_iri]
+
+        # F-01 (audit): obsah NOVE verze pripravime PRED volanim upsert_law -
+        # to uz nevratne archivuje/maze stare chunky a nastavuje is_current
+        # na novy zaznam. Bez teto kontroly predem hrozilo, ze se pri
+        # neuplnem/prazdnem parsovani (napr. vypadek pri stahovani fragmentu)
+        # commitne "aktualni" verze zakona bez jedineho chunku a zakon tak
+        # zmizi z vyhledavani, i kdyz predchozi uplna verze byla v poradku.
+        content_by_node = []
+        for node_idx, node in enumerate(section_nodes):
+            frag_ids = by_section.get(node["iri"], [])
+            parts = [texts_by_id[fid] for fid in frag_ids if fid in texts_by_id]
+            content = " ".join(parts).strip()
+            if content:
+                content_by_node.append((node_idx, node, content))
+
+        if not content_by_node:
+            old_count = len(fetch_doc_chunks(conn, prev[0])) if prev is not None else 0
+            log(f"CHYBA u {citace}: nova verze ma 0 neprazdnych useku (predchozi verze mela {old_count} chunku) - PRESKAKUJI, ponechavam predchozi verzi beze zmeny")
+            skipped_empty += 1
+            continue
+
+        if prev is not None:
+            old_count = len(fetch_doc_chunks(conn, prev[0]))
+            # Jen informativni varovani (neblokuje import) - napr. skutecne
+            # legislativni zruseni casti predpisu muze pocet useku opravdu
+            # snizit, tohle jen pomaha si toho vsimnout v logu (viz F-01 audit).
+            if old_count >= 5 and len(content_by_node) < old_count * 0.3:
+                log(f"! POZOR {citace}: nova verze ma jen {len(content_by_node)} useku oproti {old_count} v predchozi verzi - zkontrolujte, jestli parsovani neni neuplne")
+
         try:
             document_id, reuse_map = upsert_law(conn, prev, citace, meta, version_iri, doc_url)
             if prev is not None:
                 updated += 1
 
-            section_nodes = section_nodes_by_version[version_iri]
-            by_section = by_section_by_version[version_iri]
-
-            chunk_rows = []
-            for idx, node in enumerate(section_nodes):
-                frag_ids = by_section.get(node["iri"], [])
-                parts = [texts_by_id[fid] for fid in frag_ids if fid in texts_by_id]
-                content = " ".join(parts).strip()
-                if not content:
-                    continue
-                chunk_rows.append(
-                    (
-                        str(uuid.uuid4()),
-                        document_id,
-                        idx,
-                        node["citace"],
-                        content,
-                        reuse_map.get((node["citace"], content)),
-                    )
+            chunk_rows = [
+                (
+                    str(uuid.uuid4()),
+                    document_id,
+                    node_idx,
+                    node["citace"],
+                    content,
+                    reuse_map.get((node["citace"], content)),
                 )
+                for node_idx, node, content in content_by_node
+            ]
 
-            if chunk_rows:
-                with conn.cursor() as cur:
-                    psycopg2.extras.execute_values(
-                        cur,
-                        "insert into chunks (id, document_id, chunk_index, heading, content, embedding) values %s",
-                        chunk_rows,
-                    )
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    "insert into chunks (id, document_id, chunk_index, heading, content, embedding) values %s",
+                    chunk_rows,
+                )
             conn.commit()
 
             done += 1
@@ -432,7 +454,7 @@ def main():
             continue
 
     log(
-        f"=== Hotovo, zpracovano {done} predpisu (z toho aktualizace existujicich: {updated}) "
+        f"=== Hotovo, zpracovano {done} predpisu (z toho aktualizace existujicich: {updated}, preskoceno kvuli prazdne nove verzi: {skipped_empty}) "
         f"po shardech: " + ", ".join(f"{k}={v}" for k, v in per_shard.items()) + " ==="
     )
 
