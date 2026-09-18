@@ -88,6 +88,14 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 MAX_DELETE_PER_RUN = int(os.environ.get("MAX_DELETE_PER_RUN", "500"))
 
+# Bucket, kam migrate_chunks_to_storage.py uklada obsah velkych chunku mimo
+# Postgres (viz {chunk_id}.txt objekty) - pri mazani chunku odsud (viz
+# delete_storage_objects nize) musime smazat i prip. odpovidajici objekt,
+# jinak zustane navzdy osireny (viz jednorazovy uklid
+# cleanup_orphaned_chunk_storage.py a beh 17.9.2026, ktery jich nasel
+# 266824 - tohle je oprava zdroje tohoto problemu, ne jen jednorazovy uklid).
+CHUNK_STORAGE_BUCKET = "chunk-content"
+
 # Vsechny doc_type hodnoty povazovane za "pravni predpis rodiny zakony" -
 # musi byt presne stejny seznam jako ZAKONY_DOC_TYPES + "duvodova_zprava" v
 # migrate_zakony_to_neon.py, jinak by tento skript bud preskakoval bezpecne
@@ -315,12 +323,81 @@ def get_neon_present(shard_key):
         conn.close()
 
 
+def get_chunk_ids_for_documents(doc_ids):
+    """Chunk id's pro dane dokumenty, potrebne PRED smazanim radku chunks
+    (viz delete_batch), aby slo po smazani z DB smazat i prip. odpovidajici
+    objekty ve Storage bucketu CHUNK_STORAGE_BUCKET (viz
+    migrate_chunks_to_storage.py). Stejne davkovani/strankovani jako u
+    get_supabase_chunk_counts()."""
+    ids = []
+    if not doc_ids:
+        return ids
+    doc_batch = 20
+    doc_ids = list(doc_ids)
+    for i in range(0, len(doc_ids), doc_batch):
+        batch = doc_ids[i : i + doc_batch]
+        page = 1000
+        offset = 0
+        while True:
+            rows = sb_get(
+                "chunks",
+                {
+                    "select": "id",
+                    "document_id": f"in.({','.join(batch)})",
+                    "order": "id.asc",
+                    "limit": str(page),
+                    "offset": str(offset),
+                },
+            )
+            if not rows:
+                break
+            ids.extend(r["id"] for r in rows)
+            offset += page
+            if len(rows) < page:
+                break
+    return ids
+
+
+def delete_storage_objects(chunk_ids):
+    """Smaze odpovidajici {chunk_id}.txt objekty z CHUNK_STORAGE_BUCKET,
+    pokud existuji - mazani neexistujiciho objektu ve Storage je no-op
+    (overeno pri jednorazovem uklidu 17.9.2026), takze je bezpecne volat
+    pro vsechny chunky, i ty, co v Storage nikdy nebyly (vetsina chunku
+    ma obsah primo v Postgres, jen ty velke se ukladaji i do Storage).
+
+    Zamerne NEVYHAZUJE vyjimku pri selhani: toto je uklid NAVIC k jiz
+    uspesne dokoncenemu mazani z DB (ktere je hlavni, integritne kriticka
+    cast delete_batch) - kdyby tu selhani shodilo delete_batch, main() by
+    to chybne vyhodnotilo jako selhani mazani DB a zkousela by drahe
+    mazani po jednom dokumentu znovu, i kdyz DB cast uz ve skutecnosti v
+    poradku probehla. Pripadne osirele objekty se pri pristim behu
+    jednorazoveho uklidu (cleanup_orphaned_chunk_storage.py) stejne
+    najdou a smazou, takze nejde o trvalou ztratu."""
+    if not chunk_ids:
+        return
+    batch = 1000
+    for i in range(0, len(chunk_ids), batch):
+        group = chunk_ids[i : i + batch]
+        prefixes = [f"{cid}.txt" for cid in group]
+        try:
+            _request_with_retry(
+                "DELETE",
+                f"{SUPABASE_URL}/storage/v1/object/{CHUNK_STORAGE_BUCKET}",
+                headers=sb_headers(),
+                json={"prefixes": prefixes},
+            )
+        except Exception as e:
+            log(f"    POZOR: mazani Storage objektu (davka {i}-{i + len(group)}) selhalo, pokracuji dal (osirele objekty pripadne uklidi cleanup_orphaned_chunk_storage.py): {e}")
+
+
 def delete_batch(doc_ids):
     if not doc_ids:
         return
     ids_expr = f"in.({','.join(doc_ids)})"
+    chunk_ids = get_chunk_ids_for_documents(doc_ids)
     sb_delete("chunks", {"document_id": ids_expr})
     sb_delete("documents", {"id": ids_expr})
+    delete_storage_objects(chunk_ids)
 
 
 def main():
