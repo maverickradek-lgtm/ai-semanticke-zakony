@@ -10,12 +10,23 @@ logika prioritizace (embed_priority, has_pending_chunks) jako v hlavni Supabase.
 Beh je round-robin pres vsechny 4 shardy (jeden davkovy dotaz z kazdeho, pak
 dalsi kolo), aby zadny shard nebyl systematicky odsouvan na konec spolecneho
 casoveho/API rozpoctu - zejmena 2021_dosud, ktery dale roste.
+
+Zalozni klic (GEMINI_API_KEY_BACKUP, viz gemini_quota.py): kdyz primarnimu
+klici shardu dojde trpelivost (RateLimitStop po MAX_CONSECUTIVE_429 chybach
+429 v rade), shard dostane JEDNU sanci prepnout se na sdileny zalozni klic
+misto trvaleho vyrazeni pro zbytek behu. Zalozni klic muze mit vlastni denni
+strop (GEMINI_KEY_QUOTA_CAPS) - viz gemini_quota.py, ktery si strop meri sam
+misto spolehani na (uz neplatne) zverejnene RPD limity od Googlu.
 """
 
+import json
 import os
 import sys
 import time
 import psycopg2
+
+import gemini_quota
+
 
 def db_connect(url, timeout=15):
     """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
@@ -37,6 +48,15 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ADMIN_USER_ID = "2648f5db-bea6-4cac-b490-ad0ec59723df"
 GEMINI_API_KEY_OVERRIDE = os.environ.get("GEMINI_API_KEY_OVERRIDE")
 GEMINI_API_KEY_POOL = [k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL", "").split(",") if k.strip()]
+GEMINI_API_KEY_POOL_LABELS = [k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL_LABELS", "").split(",") if k.strip()]
+GEMINI_API_KEY_BACKUP = os.environ.get("GEMINI_API_KEY_BACKUP")
+GEMINI_API_KEY_BACKUP_LABEL = os.environ.get("GEMINI_API_KEY_BACKUP_LABEL", "GEMINI_API_KEY_BACKUP")
+# Napr. {"GEMINI_API_KEY_BACKUP": 0.6} - klic v tomto slovniku se nesmi
+# pouzit nad zadany podil (cap_fraction) sveho POZOROVANEHO denniho stropu
+# (viz gemini_quota.py - Google presne RPD cisla uz nezverejnuje). Klic,
+# ktery tu neni uveden, se meri, ale neomezuje - snadno se pridavaji dalsi
+# klice do tohoto omezovani proste pridanim do teto JSON promenne.
+GEMINI_KEY_QUOTA_CAPS = json.loads(os.environ.get("GEMINI_KEY_QUOTA_CAPS", "{}") or "{}")
 
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 256
@@ -112,11 +132,27 @@ class RateLimitStop(Exception):
     ten jeden shard, jehoz klic je aktualne rate-limitovany, ostatni bezi dal."""
 
 
+class QuotaCapped(RateLimitStop):
+    """Vyvolano, kdyz klic dosahl sveho nastaveneho denniho stropu (viz
+    GEMINI_KEY_QUOTA_CAPS / gemini_quota.py) - na rozdil od RateLimitStop
+    (skutecna chyba 429 od Googlu) jde o preventivni vlastni omezeni, aby
+    klic nevycerpal celou kvotu na ukor zivych uzivatelu appky. Dedi z
+    RateLimitStop, aby ji volajici kod (main - prepnuti na zalozni klic /
+    vyrazeni shardu) zpracoval uplne stejne, bez zvlastni vetve navic."""
+
+
 _consecutive_429 = {}  # track_key (shard) -> pocet po sobe jdoucich 429 pro dany klic
 
 
-def embed_text(text, gemini_key, retries=3, track_key="default"):
+def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default"):
     global _consecutive_429
+
+    cap = GEMINI_KEY_QUOTA_CAPS.get(gemini_key_label)
+    if cap is not None and not gemini_quota.check_quota(SUPABASE_URL, SERVICE_KEY, gemini_key_label, cap_fraction=cap):
+        raise QuotaCapped(
+            f"klic '{gemini_key_label}' dosahl dnesniho stropu ({int(cap * 100)} % pozorovaneho denniho limitu) - preskakuji"
+        )
+
     last_status = None
     last_body = None
     for attempt in range(retries):
@@ -134,6 +170,7 @@ def embed_text(text, gemini_key, retries=3, track_key="default"):
             last_status = resp.status_code
             last_body = resp.text[:300]
             if resp.status_code == 429:
+                gemini_quota.report_429(SUPABASE_URL, SERVICE_KEY, gemini_key_label)
                 n = _consecutive_429.get(track_key, 0) + 1
                 _consecutive_429[track_key] = n
                 if n >= MAX_CONSECUTIVE_429:
@@ -158,9 +195,11 @@ def embed_text(text, gemini_key, retries=3, track_key="default"):
     return None
 
 
-def embed_shard_batch(conn, gemini_key, shard_key):
+def embed_shard_batch(conn, key_info, shard_key):
     """Vezme az BATCH_PER_SHARD pending chunku z jednoho shardu a zembeduje je.
-    Vraci pocet uspesne zembedovanych chunku (0 = shard nema nic pending)."""
+    Vraci pocet uspesne zembedovanych chunku (0 = shard nema nic pending).
+    key_info je {"value": <raw klic>, "label": <stabilni nazev klice pro
+    kvotovy system>}."""
     with conn.cursor() as cur:
         cur.execute(
             "select id, content from get_pending_chunks_prioritized(%s)",
@@ -175,7 +214,7 @@ def embed_shard_batch(conn, gemini_key, shard_key):
         if time_left() <= 20:
             break
         try:
-            vec = embed_text(content, gemini_key, track_key=shard_key)
+            vec = embed_text(content, key_info["value"], key_info["label"], track_key=shard_key)
         except RateLimitStop:
             raise
         except Exception as e:
@@ -235,11 +274,25 @@ def main():
 
     if GEMINI_API_KEY_POOL:
         shard_names = list(NEON_URLS.keys())
-        shard_keys = {name: GEMINI_API_KEY_POOL[i % len(GEMINI_API_KEY_POOL)] for i, name in enumerate(shard_names)}
+        labels = GEMINI_API_KEY_POOL_LABELS if len(GEMINI_API_KEY_POOL_LABELS) == len(GEMINI_API_KEY_POOL) else [
+            f"pool_{i}" for i in range(len(GEMINI_API_KEY_POOL))
+        ]
+        shard_keys = {
+            name: {
+                "value": GEMINI_API_KEY_POOL[i % len(GEMINI_API_KEY_POOL)],
+                "label": labels[i % len(labels)],
+            }
+            for i, name in enumerate(shard_names)
+        }
         log(f"Pouzivam pool {len(GEMINI_API_KEY_POOL)} Gemini klicu rozdelenych po shardech (vic klicu = vic paralelni kvoty).")
     else:
         admin_key = get_admin_gemini_key()
-        shard_keys = {name: admin_key for name in NEON_URLS}
+        shard_keys = {name: {"value": admin_key, "label": "admin"} for name in NEON_URLS}
+
+    if GEMINI_API_KEY_BACKUP:
+        log(f"Zalozni klic '{GEMINI_API_KEY_BACKUP_LABEL}' k dispozici pro shardy, kterym dojde primarni klic.")
+    if GEMINI_KEY_QUOTA_CAPS:
+        log(f"Denni stropy pro klice: {GEMINI_KEY_QUOTA_CAPS}")
 
     neon_conns = {}
     for key, url in NEON_URLS.items():
@@ -260,6 +313,7 @@ def main():
     totals = {key: 0 for key in NEON_URLS}
     exhausted = {key: False for key in NEON_URLS}
     zero_streak = {key: 0 for key in NEON_URLS}
+    backup_used = {key: False for key in NEON_URLS}
     rate_limited_shards = set()
     round_num = 0
 
@@ -274,14 +328,20 @@ def main():
                 conn = ensure_conn(neon_conns, key)
                 done = embed_shard_batch(conn, shard_keys[key], key)
             except RateLimitStop as e:
-                log(f"   [{key}] STOP: {e}")
-                rate_limited_shards.add(key)
-                exhausted[key] = True
-                if not GEMINI_API_KEY_POOL:
-                    # bez poolu maji vsechny shardy stejny klic - je vycerpany pro vsechny
-                    for k in exhausted:
-                        exhausted[k] = True
-                        rate_limited_shards.add(k)
+                log(f"   [{key}] STOP na klici '{shard_keys[key]['label']}': {e}")
+                if GEMINI_API_KEY_BACKUP and not backup_used[key]:
+                    log(f"   [{key}] prepinam na zalozni klic '{GEMINI_API_KEY_BACKUP_LABEL}' misto vyrazeni shardu")
+                    shard_keys[key] = {"value": GEMINI_API_KEY_BACKUP, "label": GEMINI_API_KEY_BACKUP_LABEL}
+                    backup_used[key] = True
+                    _consecutive_429[key] = 0
+                else:
+                    rate_limited_shards.add(key)
+                    exhausted[key] = True
+                    if not GEMINI_API_KEY_POOL:
+                        # bez poolu maji vsechny shardy stejny klic - je vycerpany pro vsechny
+                        for k in exhausted:
+                            exhausted[k] = True
+                            rate_limited_shards.add(k)
                 done = 0
             except Exception as e:
                 log(f"   [{key}] CHYBA behem davky (zkusim znovu pristi kolo): {e}")
@@ -311,7 +371,10 @@ def main():
             pass
 
     grand_total = sum(totals.values())
-    suffix = f" (rate limit zastavil: {', '.join(sorted(rate_limited_shards))})" if rate_limited_shards else ""
+    suffix = f" (rate limit/kvota zastavila: {', '.join(sorted(rate_limited_shards))})" if rate_limited_shards else ""
+    used_backup = [k for k, v in backup_used.items() if v]
+    if used_backup:
+        suffix += f" (zalozni klic pouzit pro: {', '.join(sorted(used_backup))})"
     log(f"Hotovo. Celkem zembedovano {grand_total} chunku: " + ", ".join(f"{k}={v}" for k, v in totals.items()) + suffix)
 
 
