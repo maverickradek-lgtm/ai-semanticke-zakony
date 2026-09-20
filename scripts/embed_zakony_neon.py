@@ -168,7 +168,7 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
                 timeout=30,
             )
             last_status = resp.status_code
-            last_body = resp.text[:300]
+            last_body = resp.text[:1500]
             if resp.status_code == 429:
                 gemini_quota.report_429(SUPABASE_URL, SERVICE_KEY, gemini_key_label)
                 n = _consecutive_429.get(track_key, 0) + 1
@@ -186,7 +186,7 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
             return vec or None
         except requests.RequestException as e:
             last_status = getattr(getattr(e, "response", None), "status_code", None)
-            last_body = str(e)[:300]
+            last_body = str(e)[:1500]
             if attempt == retries - 1:
                 log(f"   DEBUG embed_text: vyjimka po vycerpani pokusu (status={last_status}): {last_body}")
                 raise
