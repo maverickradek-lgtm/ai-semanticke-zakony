@@ -27,6 +27,36 @@ jobs:
             sleep 10
           done
 
+      - name: DOCASNA diagnostika site (DNS/HTTPS pripojeni)
+        run: |
+          echo "=== /etc/resolv.conf ==="
+          cat /etc/resolv.conf || true
+          echo ""
+          echo "=== 30x getent hosts generativelanguage.googleapis.com (1x/2s) ==="
+          ok=0; fail=0
+          for i in $(seq 1 30); do
+            if getent hosts generativelanguage.googleapis.com >/dev/null 2>&1; then
+              ok=$((ok+1))
+            else
+              fail=$((fail+1))
+              echo "  FAIL pokus $i v $(date -u +%H:%M:%S)"
+            fi
+            sleep 2
+          done
+          echo "DNS vysledek: OK=$ok FAIL=$fail"
+          echo ""
+          echo "=== 10x curl na generativelanguage.googleapis.com (1x/1s) ==="
+          for i in $(seq 1 10); do
+            curl -sS -o /dev/null -m 5 -w "pokus $i: http=%{http_code} celkovy_cas=%{time_total}s dns_cas=%{time_namelookup}s\n" https://generativelanguage.googleapis.com/ || echo "  curl selhal (pokus $i)"
+            sleep 1
+          done
+          echo ""
+          echo "=== 10x curl na dmnenjykqhxkipxulhxr.supabase.co ==="
+          for i in $(seq 1 10); do
+            curl -sS -o /dev/null -m 5 -w "pokus $i: http=%{http_code} celkovy_cas=%{time_total}s dns_cas=%{time_namelookup}s\n" https://dmnenjykqhxkipxulhxr.supabase.co/ || echo "  curl selhal (pokus $i)"
+            sleep 1
+          done
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
