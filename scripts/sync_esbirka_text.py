@@ -246,7 +246,17 @@ def scan_version_fragments(version_iris):
                 "hierarchie_hex": hierarchie_hex,
             })
         cit = item.get("zn\u011bn\u00ed-fragment-citace")
-        if cit and re.fullmatch(r"§\s*\d+[a-z]?", cit.strip()):
+        if cit and re.fullmatch(
+            # Radek 2026-09-22: puvodne jen "§ N" (paragrafy konsolidovanych
+            # predpisu) - novelizacni zakony (Cl. I, Cl. II...) tak nikdy
+            # nedostaly zadny section_node a vysly s 0 chunky, i kdyz text
+            # v e-Sbirce realne existuje (viz 72/2025 Sb.). Cl.-uzly overeny
+            # pres portal e-sbirka.gov.cz (kodTypuFragmentu="Clanek",
+            # zkracenaCitace "Cl. 1"/"Cl. 2"...) - pripojen i rimsky format
+            # pro jistotu, kdyby se v bulk datech lisil od portalu.
+            r"§\s*\d+[a-z]?|[Čč]l\.\s*\d+[a-z]?|[Čč]l\.\s*[IVXLCDM]+[a-z]?",
+            cit.strip(),
+        ):
             section_nodes[v].append({
                 "iri": iri,
                 "citace": cit,
