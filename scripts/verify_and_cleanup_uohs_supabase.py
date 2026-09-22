@@ -59,8 +59,23 @@ def sb_headers():
     }
 
 
+def request_with_retry(method, url, retries=4, **kwargs):
+    """Provede HTTP pozadavek na Supabase se 4 pokusy - NAS self-hosted runner
+    ma obcas docasny DNS vypadek (Temporary failure in name resolution),
+    jednorazovy pokus bez retry by pak zbytecne shodil cely beh."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return SESSION.request(method, url, **kwargs)
+        except requests.RequestException as e:
+            last_err = e
+            log(f"   {method} {url} selhalo (pokus {attempt + 1}/{retries}): {e}")
+            time.sleep(3)
+    raise last_err
+
+
 def sb_get(path, params):
-    r = SESSION.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), params=params, timeout=60)
+    r = request_with_retry("GET", f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), params=params, timeout=60)
     r.raise_for_status()
     return r.json()
 
@@ -127,7 +142,8 @@ def delete_batch(doc_ids):
     if not doc_ids:
         return
     ids_expr = f"in.({','.join(doc_ids)})"
-    r1 = SESSION.delete(
+    r1 = request_with_retry(
+        "DELETE",
         f"{SUPABASE_URL}/rest/v1/chunks",
         headers={**sb_headers(), "Prefer": "return=minimal"},
         params={"document_id": ids_expr},
@@ -135,7 +151,8 @@ def delete_batch(doc_ids):
     )
     if r1.status_code >= 300:
         raise RuntimeError(f"Mazani chunku selhalo: {r1.status_code} {r1.text[:300]}")
-    r2 = SESSION.delete(
+    r2 = request_with_retry(
+        "DELETE",
         f"{SUPABASE_URL}/rest/v1/documents",
         headers={**sb_headers(), "Prefer": "return=minimal"},
         params={"id": ids_expr},
