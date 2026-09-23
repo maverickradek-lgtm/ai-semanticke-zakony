@@ -338,16 +338,22 @@ def ensure_schema(conn):
             returns table(id uuid, heading text, content text, document_id uuid)
             language plpgsql stable as $f$
             begin
+                -- Radek 2026-09-23: nejdriv se maji doembedovat VSECHNY aktualni
+                -- (is_current=true) zakony, az pak historicka zneni - a mezi
+                -- historickymi zneni nejdriv ta novejsi (blizsi soucasnosti),
+                -- pak stale starsi a starsi.
                 if p_ascending then
                     return query select c.id, c.heading, c.content, c.document_id
                     from chunks c join documents d on d.id = c.document_id
                     where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
-                    order by d.embed_priority asc nulls last, d.created_at desc limit p_limit;
+                    order by d.is_current asc, d.embed_priority asc nulls last,
+                        coalesce(d.valid_until, d.valid_from) asc nulls last, d.created_at desc limit p_limit;
                 else
                     return query select c.id, c.heading, c.content, c.document_id
                     from chunks c join documents d on d.id = c.document_id
                     where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true
-                    order by d.embed_priority desc nulls last, d.created_at asc limit p_limit;
+                    order by d.is_current desc, d.embed_priority desc nulls last,
+                        coalesce(d.valid_until, d.valid_from) desc nulls last, d.created_at asc limit p_limit;
                 end if;
             end;
             $f$;
