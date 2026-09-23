@@ -71,39 +71,52 @@ def get_empty_historical(conn):
 
 
 def backfill_shard(shard_key, url):
+    # Radek 2026-09-23: pripojeni k Neonu se NEOTVIRA hned na zacatku a
+    # nedrzi se cely cas - stahovani+skenovani 003/004 muze trvat i pres
+    # 7 minut a drzena nevyuzita DB session mezitim spadne na "SSL
+    # connection has been closed unexpectedly" (presne tohle se stalo v
+    # prvnim behu). Kratke pripojeni se otevre zvlast na precteni seznamu
+    # a zvlast az tesne pred zapisem (a znovu-otevre pri vypadku behem
+    # zapisu).
     conn = db_connect(url)
     try:
         empty = get_empty_historical(conn)
-        log(f"[{shard_key}] {len(empty)} historickych zaznamu bez chunku")
-        if not empty:
-            return 0, 0
+    finally:
+        conn.close()
 
-        version_iris = sorted(set(empty.values()))
-        log(f"[{shard_key}] -> scan_version_fragments pro {len(version_iris)} unikatnich verzi")
-        section_nodes_by_version, all_fragments_by_version = fetcher._with_retry(
-            lambda: fetcher.scan_version_fragments(version_iris),
-            label=f"[{shard_key}] Skenovani fragmentu (003)",
-        )
+    log(f"[{shard_key}] {len(empty)} historickych zaznamu bez chunku")
+    if not empty:
+        return 0, 0
 
-        for v in section_nodes_by_version:
-            total = len(section_nodes_by_version[v])
-            if total > MAX_SECTIONS_PER_ACT:
-                log(f"  ! verze {v}: {total} useku presahuje pojistku, oriznuto")
-                section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_SECTIONS_PER_ACT]
+    version_iris = sorted(set(empty.values()))
+    log(f"[{shard_key}] -> scan_version_fragments pro {len(version_iris)} unikatnich verzi")
+    section_nodes_by_version, all_fragments_by_version = fetcher._with_retry(
+        lambda: fetcher.scan_version_fragments(version_iris),
+        label=f"[{shard_key}] Skenovani fragmentu (003)",
+    )
 
-        by_section_by_version = {}
-        all_needed_fragment_ids = set()
-        for v in version_iris:
-            by_section = fetcher.group_descendants(section_nodes_by_version[v], all_fragments_by_version[v])
-            by_section_by_version[v] = by_section
-            for ids in by_section.values():
-                all_needed_fragment_ids.update(ids)
+    for v in section_nodes_by_version:
+        total = len(section_nodes_by_version[v])
+        if total > MAX_SECTIONS_PER_ACT:
+            log(f"  ! verze {v}: {total} useku presahuje pojistku, oriznuto")
+            section_nodes_by_version[v] = section_nodes_by_version[v][:MAX_SECTIONS_PER_ACT]
 
-        texts_by_id = fetcher._with_retry(
-            lambda: fetcher.fetch_fragment_texts(all_needed_fragment_ids),
-            label=f"[{shard_key}] Nacteni textu fragmentu (004)",
-        )
+    by_section_by_version = {}
+    all_needed_fragment_ids = set()
+    for v in version_iris:
+        by_section = fetcher.group_descendants(section_nodes_by_version[v], all_fragments_by_version[v])
+        by_section_by_version[v] = by_section
+        for ids in by_section.values():
+            all_needed_fragment_ids.update(ids)
 
+    texts_by_id = fetcher._with_retry(
+        lambda: fetcher.fetch_fragment_texts(all_needed_fragment_ids),
+        label=f"[{shard_key}] Nacteni textu fragmentu (004)",
+    )
+
+    # Az TED, tesne pred zapisem, se otevre cerstve pripojeni pro zapis.
+    conn = db_connect(url)
+    try:
         filled = 0
         still_empty = 0
         processed = 0
@@ -124,13 +137,29 @@ def backfill_shard(shard_key, url):
                 still_empty += 1
                 continue
 
-            with conn.cursor() as cur:
-                psycopg2.extras.execute_values(
-                    cur,
-                    "insert into chunks (id, document_id, chunk_index, heading, content, embedding) values %s",
-                    chunk_rows,
-                )
-            conn.commit()
+            for attempt in range(3):
+                try:
+                    with conn.cursor() as cur:
+                        psycopg2.extras.execute_values(
+                            cur,
+                            "insert into chunks (id, document_id, chunk_index, heading, content, embedding) values %s",
+                            chunk_rows,
+                        )
+                    conn.commit()
+                    break
+                except psycopg2.OperationalError as e:
+                    log(f"[{shard_key}] DB zapis selhal (pokus {attempt + 1}/3), obnovuji spojeni: {e}")
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                    conn = db_connect(url)
+            else:
+                log(f"[{shard_key}] VZDAVAM se zapisu chunku pro dokument {doc_id} po 3 pokusech")
+                still_empty += 1
+                continue
+
             filled += 1
             if processed % 200 == 0:
                 log(f"[{shard_key}] ...zpracovano {processed}/{len(empty)} (doplneno {filled})")
