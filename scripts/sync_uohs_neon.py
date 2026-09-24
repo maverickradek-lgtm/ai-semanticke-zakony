@@ -35,8 +35,16 @@ import psycopg2
 from bs4 import BeautifulSoup
 from docx import Document as DocxDocument
 
+import sys
+
 NL = chr(10)
 TAB = chr(9)
+
+# F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
+# noveho" (beh OK, proste 0 novych) od "behem behu doslo ke skutecne chybe"
+# (fetch/parse/embed selhaly) - druhy pripad ma za nasledek nenulovy exit
+# kod z main(), aby to GitHub Actions korektne oznacil jako selhany beh.
+_STATE = {"had_errors": False}
 
 NEON_DB_URL = os.environ["NEON_UOHS_DB_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -371,9 +379,11 @@ def import_new_documents(conn):
                     log("   ...naimportovano " + str(imported))
             else:
                 errors += 1
+                _STATE["had_errors"] = True
         except Exception as e:
             log("   Chyba u " + str(external_id) + ": " + str(e))
             errors += 1
+            _STATE["had_errors"] = True
 
     log(
         "Import done: " + str(imported) + " new, skipped=" + str(skipped)
@@ -399,6 +409,7 @@ def embed_pending(conn, gemini_keys):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("WARN: embed failed: " + str(chunk_id) + " " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -425,6 +436,9 @@ def main():
     finally:
         conn.close()
     log("=== UOHS sync (Neon): hotovo ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
