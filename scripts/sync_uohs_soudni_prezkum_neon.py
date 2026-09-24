@@ -42,6 +42,12 @@ from pypdf import PdfReader
 from io import BytesIO
 
 
+# F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
+# noveho" od "behem behu doslo ke skutecne chybe" - druhy pripad ma za
+# nasledek nenulovy exit kod z main().
+_STATE = {"had_errors": False}
+
+
 class HardTimeout(Exception):
     """Vyvolano, kdyz sitove volani prekroci tvrdy wall-clock limit (napr.
     DNS resolver se zasekne - to standardni 'timeout=' parametr v requests
@@ -134,6 +140,7 @@ def embed_text(text, retries=3):
             last_err = str(e)
             time.sleep(2)
     log(f"  ! embed failed after {retries} retries: {last_err}")
+    _STATE["had_errors"] = True
     return None
 
 
@@ -199,12 +206,15 @@ def fetch_pdf_links():
     seen_urls = set()
     items = []
     skipped_old_year = 0
+    list_failures = 0
     for list_url in LIST_URLS:
         try:
             resp = call_with_hard_timeout(45, SESSION.get, list_url, headers=REQ_HEADERS, timeout=30)
             resp.raise_for_status()
         except Exception as e:
             log(f"! nepodarilo se nacist {list_url}: {e}")
+            list_failures += 1
+            _STATE["had_errors"] = True
             continue
         soup = BeautifulSoup(resp.text, "html.parser")
         for a in soup.find_all("a", href=True):
@@ -231,6 +241,8 @@ def fetch_pdf_links():
                 "issuer": classify_issuer(case_num),
                 "year": year,
             })
+    if list_failures > 0 and list_failures == len(LIST_URLS):
+        raise RuntimeError("Vsechny zdrojove seznamy UOHS soudniho prezkumu jsou nedostupne - zdroj pravdepodobne vypadl")
     log(f"Nalezeno {len(items)} unikatnich PDF odkazu od roku {CUTOFF_YEAR} (krajske soudy + Ustavni soud, NSS vynechan). Preskoceno (pred rokem {CUTOFF_YEAR}): {skipped_old_year}.")
     return items
 
@@ -273,6 +285,7 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
         return "\n\n".join(parts).strip()
     except Exception as e:
         log(f"  ! pypdf selhalo: {e}")
+        _STATE["had_errors"] = True
         return ""
 
 
@@ -369,6 +382,7 @@ def main():
             doc_id = insert_document(conn, item, chunks)
         except Exception as e:
             log(f"! insert selhal ({item['case_num']}): {e}")
+            _STATE["had_errors"] = True
             conn = ensure_conn(conn)
             continue
 
@@ -391,6 +405,7 @@ def main():
                 embedded += 1
             except Exception as e:
                 log(f"  ! update embeddingu selhal pro chunk {chunk_id}: {e}")
+                _STATE["had_errors"] = True
                 conn = ensure_conn(conn)
 
         log(f"+ {item['case_num']} ({item['issuer']}): {len(chunks)} chunku, {embedded} naembedovano")
@@ -399,6 +414,10 @@ def main():
 
     log(f"\nHotovo. Zpracovano: {processed}, preskoceno (bez textu): {skipped_no_text}, chyba stazeni: {failed_fetch}.")
     conn.close()
+
+    if _STATE["had_errors"] or failed_fetch > 0:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
