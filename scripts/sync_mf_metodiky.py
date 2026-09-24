@@ -28,6 +28,7 @@ zpetne dohnani historie), dalsi mesicni behy uz jen doplni nove polozky.
 
 import os
 import re
+import sys
 import time
 from datetime import datetime
 from io import BytesIO
@@ -37,6 +38,11 @@ import requests
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 import psycopg2
+
+# F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
+# noveho" od "behem behu doslo ke skutecne chybe" - druhy pripad ma za
+# nasledek nenulovy exit kod z main().
+_STATE = {"had_errors": False}
 
 def db_connect(url, timeout=15):
     """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
@@ -382,6 +388,7 @@ def import_new_documents(conn):
                     text = extract_pdf_text(file_resp.content)
             except Exception as e:
                 print(f"WARN: file fetch/extract failed for {item['title']}: {e}")
+                _STATE["had_errors"] = True
                 continue
             if not text:
                 print(f"SKIP (empty text): {item['title']}")
@@ -488,6 +495,7 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 print(f"WARN: embed failed for {chunk_id}: {e}")
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -513,6 +521,10 @@ def main():
         conn = embed_pending(conn, gemini_key)
     finally:
         conn.close()
+
+    if _STATE["had_errors"]:
+        print("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
