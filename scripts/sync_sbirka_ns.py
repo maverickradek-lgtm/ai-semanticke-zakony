@@ -13,6 +13,7 @@ jako env proměnné SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
 
 import os
 import re
+import sys
 import time
 from html import unescape
 from threading import Lock
@@ -246,10 +247,12 @@ def get_sesit_urls():
     a vrátí je seřazené od nejnovějších (rok, číslo sešitu sestupně)."""
     sesity = []
     seen = set()
+    sitemap_failures = 0
     for sm_url in SITEMAP_URLS:
         r = _get(sm_url)
         if r is None:
             log(f"  sitemapa {sm_url} nedostupna, preskakuji")
+            sitemap_failures += 1
             continue
         for url in re.findall(r"<loc>\s*(.*?)\s*</loc>", r.text):
             url = unescape(url).strip()
@@ -265,6 +268,11 @@ def get_sesit_urls():
             mc = re.search(r"-c-(\d+)", url)
             cislo = int(mc.group(1)) if mc else 0
             sesity.append((rok, cislo, url))
+    if sitemap_failures == len(SITEMAP_URLS):
+        # F-10: pokud selhaly UPLNE VSECHNY sitemapy (ne jen jedna), neni to
+        # "zdroj nema nic noveho" ale skutecny vypadek zdroje - vyhodit
+        # vyjimku, aby main() korektne skoncil nenulovym kodem.
+        raise RuntimeError("Obe sitemapy sbirka.nsoud.cz jsou nedostupne - zdroj pravdepodobne vypadl")
     sesity.sort(key=lambda t: (t[0], t[1]), reverse=True)
     return [t[2] for t in sesity]
 
@@ -370,6 +378,16 @@ def main():
 
     log(f"=== Hotovo: zpracovano {len(fronta)}, ulozeno {ulozeno}, "
         f"preskoceno {preskoceno}, chyb {chyby} ===")
+
+    # F-10 (audit 2026-09-24): "0 novych" (fronta prazdna, protoze vse uz v
+    # databazi je) je v poradku a konci uspechem - to je legitimni "zdroj
+    # nema nic noveho". Ale pokud behem zpracovani doslo k alespon jedne
+    # skutecne chybe (stranka nedostupna, neocekavana vyjimka), skoncime
+    # nenulovym kodem, aby to GitHub Actions ukazal jako selhany beh, ne
+    # jako tichy uspech.
+    if chyby > 0:
+        log(f"=== SELHANI: {chyby} chyb behem zpracovani, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
