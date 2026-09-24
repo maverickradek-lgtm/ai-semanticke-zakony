@@ -55,8 +55,13 @@ def ensure_conn(conn):
         return db_connect(NEON_DB_URL)
 
 
+import sys
+
 NL = chr(10)
 TAB = chr(9)
+
+# F-10 (audit 2026-09-24): viz sync_uohs_neon.py pro zduvodneni.
+_STATE = {"had_errors": False}
 
 NEON_DB_URL = os.environ["NEON_MMR_DB_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -314,6 +319,7 @@ def import_new_documents(conn):
             detail = fetch_detail(item["href"])
         except Exception as e:
             log("Chyba pri stahovani detailu " + item["href"] + ": " + str(e))
+            _STATE["had_errors"] = True
             continue
         pdf_urls = detail["pdf_urls"]
         if not pdf_urls:
@@ -332,6 +338,7 @@ def import_new_documents(conn):
                 text = extract_pdf_text(pr.content)
             except Exception as e:
                 log("Chyba pri stahovani/extrakci PDF " + pdf_url + ": " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not text or len(text) < 50:
                 log("Preskakuji (prazdny text): " + item["title"])
@@ -383,6 +390,7 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("Embed selhal pro chunk " + str(chunk_id) + ": " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -407,6 +415,9 @@ def main():
     finally:
         conn.close()
     log("=== MMR metodiky sync (Neon): hotovo ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
