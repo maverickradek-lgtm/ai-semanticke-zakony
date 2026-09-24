@@ -22,6 +22,7 @@ diky tomu je import radove rychlejsi nez sekvencni zpracovani.
 """
 
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
@@ -234,6 +235,12 @@ def main():
                 log(f"  ...zpracovano {done_count}/{len(matched)} (importovano {imported})")
 
     log(f"=== Hotovo: importovano {imported}, preskoceno {skipped}, chyb {errors} ===")
+
+    # F-10 (audit 2026-09-24): nenulovy exit kod, pokud behem behu doslo
+    # ke skutecnym chybam (ne jen "0 novych polozek" - to je v poradku).
+    if errors > 0:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
