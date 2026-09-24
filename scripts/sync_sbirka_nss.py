@@ -31,6 +31,7 @@ SUPABASE_SERVICE_ROLE_KEY_NS jako env SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
 
 import os
 import re
+import sys
 import time
 from html import unescape
 from threading import Lock
@@ -217,16 +218,23 @@ def get_vydani_urls():
     /cz/{rok}-{cislo}, seřazené od nejnovějšího. Sitemapa neexistuje."""
     vydani = []
     current_year = time.gmtime().tm_year
-    for rok in range(max(CUTOFF_YEAR, FIRST_YEAR), current_year + 1):
+    years = list(range(max(CUTOFF_YEAR, FIRST_YEAR), current_year + 1))
+    year_failures = 0
+    for rok in years:
         r = _get(f"{BASE_URL}/cz/{rok}")
         if r is None:
             log(f"  rocnik {rok} nedostupny, preskakuji")
+            year_failures += 1
             continue
         cisla = set()
         for m in re.finditer(rf'href="[^"]*/cz/{rok}-(\d+)/?"', r.text):
             cisla.add(int(m.group(1)))
         for cislo in cisla:
             vydani.append((rok, cislo, f"{BASE_URL}/cz/{rok}-{cislo}"))
+    if years and year_failures == len(years):
+        # F-10: pokud selhaly UPLNE VSECHNY rocnikove stranky, jde o vypadek
+        # zdroje, ne o "nic noveho" - at to main() korektne oznaci za chybu.
+        raise RuntimeError("Vsechny rocnikove stranky sbirka.nssoud.cz jsou nedostupne - zdroj pravdepodobne vypadl")
     vydani.sort(key=lambda t: (t[0], t[1]), reverse=True)
     return [t[2] for t in vydani]
 
@@ -445,6 +453,13 @@ def main():
                     log(f"  [{did}] neocekavana chyba: {e}")
     log(f"=== Hotovo: zpracovano {len(fronta)}, ulozeno {ulozeno}, "
         f"preskoceno {preskoceno}, chyb {chyby} ===")
+
+    # F-10 (audit 2026-09-24): viz sync_sbirka_ns.py - "0 novych" je v
+    # poradku (nic noveho), ale skutecne chyby behem zpracovani maji za
+    # nasledek nenulovy exit kod.
+    if chyby > 0:
+        log(f"=== SELHANI: {chyby} chyb behem zpracovani, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
