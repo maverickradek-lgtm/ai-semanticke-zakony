@@ -1304,8 +1304,23 @@ el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join('
 
 const VSE_SOURCE_DEFS = [
   { key: 'zakony', fetchPage: (search, limit, offset) => callFn('zakony-db', { action: 'list', doc_type: null, search: search || null, limit, offset }) },
-  { key: 'judikat_ns', fetchPage: async (search, limit, offset) => {
+  { key: 'judikat', fetchPage: async (search, limit, offset) => {
       const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat', p_search: search || null, p_limit: limit, p_offset: offset });
+      if (r.error) throw r.error;
+      return { data: r.data.data, count: r.data.count };
+    } },
+  // F-02 (2026-09-24): "Judikát" chip v UI mapuje jen na doc_type 'judikat'
+  // (Vrchní soudy), ale druha Supabase databaze obsahuje i judikat_ns
+  // (Sbírka NS) a judikat_nss (Sbírka NSS) - bez teto zvlastni polozky by
+  // "Vse" tato 1723 rozhodnuti (832+891) preskocilo uplne, protoze pro ne
+  // v UI neexistuje samostatny filtr.
+  { key: 'judikat_ns', fetchPage: async (search, limit, offset) => {
+      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat_ns', p_search: search || null, p_limit: limit, p_offset: offset });
+      if (r.error) throw r.error;
+      return { data: r.data.data, count: r.data.count };
+    } },
+  { key: 'judikat_nss', fetchPage: async (search, limit, offset) => {
+      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat_nss', p_search: search || null, p_limit: limit, p_offset: offset });
       if (r.error) throw r.error;
       return { data: r.data.data, count: r.data.count };
     } },
