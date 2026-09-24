@@ -348,6 +348,7 @@ def main():
     updated = 0
     per_shard = {k: 0 for k in neonlib.NEON_URLS}
     skipped_empty = 0
+    chyby = 0
 
     for citace, version_iri in version_iri_by_citace.items():
         if time_left() <= 120:
@@ -451,10 +452,11 @@ def main():
         except Exception as e:
             conn.rollback()
             log(f"CHYBA u {citace}: {e}")
+            chyby += 1
             continue
 
     log(
-        f"=== Hotovo, zpracovano {done} predpisu (z toho aktualizace existujicich: {updated}, preskoceno kvuli prazdne nove verzi: {skipped_empty}) "
+        f"=== Hotovo, zpracovano {done} predpisu (z toho aktualizace existujicich: {updated}, preskoceno kvuli prazdne nove verzi: {skipped_empty}), chyb: {chyby} "
         f"po shardech: " + ", ".join(f"{k}={v}" for k, v in per_shard.items()) + " ==="
     )
 
@@ -463,6 +465,17 @@ def main():
             conn.close()
         except Exception:
             pass
+
+    # F-10 (audit 2026-09-24): "beze zmeny od minuleho behu" konci uspechem
+    # drive (viz vyse) - to je legitimni "zdroj nema nic noveho". Ale pokud
+    # behem samotneho zpracovani zmenenych predpisu doslo k alespon jedne
+    # skutecne chybe, skoncime nenulovym kodem, aby to GitHub Actions
+    # ukazal jako selhany beh a ne jako tichy uspech - tohle je hlavni
+    # (nejdulezitejsi) sync pipeline, takze je obzvlast dulezite tohle
+    # neprehlednout.
+    if chyby > 0:
+        log(f"=== SELHANI: {chyby} chyb behem zpracovani, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
