@@ -1302,29 +1302,100 @@ const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`
 el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
 }
 
+const VSE_SOURCE_DEFS = [
+  { key: 'zakony', fetchPage: (search, limit, offset) => callFn('zakony-db', { action: 'list', doc_type: null, search: search || null, limit, offset }) },
+  { key: 'judikat_ns', fetchPage: async (search, limit, offset) => {
+      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat', p_search: search || null, p_limit: limit, p_offset: offset });
+      if (r.error) throw r.error;
+      return { data: r.data.data, count: r.data.count };
+    } },
+  { key: 'rozhodnuti_uohs', fetchPage: (search, limit, offset) => callFn('uohs-neon-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'soudni_prezkum_uohs', fetchPage: (search, limit, offset) => callFn('uohs-neon-db', { action: 'list', source: 'soudni_prezkum', search: search || null, limit, offset }) },
+  { key: 'metodika', fetchPage: (search, limit, offset) => callFn('metodiky-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_fs', fetchPage: (search, limit, offset) => callFn('fs-metodiky-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_celni', fetchPage: (search, limit, offset) => callFn('celni-metodiky-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_mv', fetchPage: (search, limit, offset) => callFn('mv-vestnik-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_eru', fetchPage: (search, limit, offset) => callFn('eru-metodiky-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_mmr', fetchPage: (search, limit, offset) => callFn('mmr-metodiky-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_uoou', fetchPage: (search, limit, offset) => callFn('uoou-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'metodika_ifrs', fetchPage: (search, limit, offset) => callFn('ifrs-db', { action: 'list', search: search || null, limit, offset }) },
+  { key: 'cus_podnikatele', fetchPage: (search, limit, offset) => callFn('metodiky-db', { action: 'list', source: 'cus_podnikatele', search: search || null, limit, offset }) },
+  { key: 'predpis_eu', fetchPage: (search, limit, offset) => callFn('metodiky-db', { action: 'list', source: 'predpis_eu', search: search || null, limit, offset }) },
+];
+
+// F-02 (2026-09-24): "Vse" drive prohledavalo jen zakony (jednorazova zmena
+// z 2026-08-31, viz git historie). Ted skutecne strankuje napric VSEMI
+// zdroji: nejdriv se zjisti pocet zaznamu (dle aktualniho hledaneho textu)
+// v kazdem zdroji, pak se spocita, ktere zdroje pokryvaji pozadovany rozsah
+// [globalOffset, globalOffset+DB_PAGE_SIZE) - zdroje jsou v pevnem poradi
+// (viz VSE_SOURCE_DEFS), takze cislovani stranek je presne a stabilni i
+// kdyz jde napric ruznymi projekty/tabulkami.
+async function fetchAllSourcesPage(search, page) {
+  const counts = await Promise.all(VSE_SOURCE_DEFS.map(async (s) => {
+    try {
+      const r = await s.fetchPage(search, 1, 0);
+      return (r && typeof r.count === 'number') ? r.count : 0;
+    } catch (e) {
+      console.warn('fetchAllSourcesPage: zjisteni poctu selhalo pro ' + s.key, e);
+      return 0;
+    }
+  }));
+
+  const globalOffset = page * DB_PAGE_SIZE;
+  const globalEnd = globalOffset + DB_PAGE_SIZE;
+  let cum = 0;
+  const segments = [];
+  for (let i = 0; i < VSE_SOURCE_DEFS.length; i++) {
+    const segStart = cum;
+    const segEnd = cum + counts[i];
+    cum = segEnd;
+    const overlapStart = Math.max(segStart, globalOffset);
+    const overlapEnd = Math.min(segEnd, globalEnd);
+    if (overlapStart < overlapEnd) {
+      segments.push({ source: VSE_SOURCE_DEFS[i], localOffset: overlapStart - segStart, localLimit: overlapEnd - overlapStart });
+    }
+  }
+  const totalCount = cum;
+
+  const segResults = await Promise.all(segments.map(async (seg) => {
+    try {
+      const r = await seg.source.fetchPage(search, seg.localLimit, seg.localOffset);
+      return (r && r.data) ? r.data : [];
+    } catch (e) {
+      console.warn('fetchAllSourcesPage: nacteni stranky selhalo pro ' + seg.source.key, e);
+      return [];
+    }
+  }));
+
+  return { data: segResults.flat(), error: null, count: totalCount };
+}
+
 async function loadDatabaseList(page) {
 dbPage = page;
 const list = $('db-list');
 list.textContent = 'Načítám…';
 const search = $('db-search').value.trim();
 const typeFilter = $('db-type-filter').value;
-const useSecondDb = SECOND_DB_DOC_TYPES.has(typeFilter);
-const useNeon = typeFilter === 'metodika';
-const useNeonFs = typeFilter === 'metodika_fs';
-const useCelniNeon = typeFilter === 'metodika_celni';
-const useUoouNeon = typeFilter === 'metodika_uoou';
-const useIfrsNeon = typeFilter === 'metodika_ifrs';
-      const useMvNeon = typeFilter === 'metodika_mv';
-const useEruNeon = typeFilter === 'metodika_eru';
-const useMmrNeon = typeFilter === 'metodika_mmr';
-const useCusNeon = typeFilter === 'cus_podnikatele';
-const usePredpisyEuNeon = typeFilter === 'predpis_eu';
+const useAllSources = typeFilter === '';
+const useSecondDb = !useAllSources && SECOND_DB_DOC_TYPES.has(typeFilter);
+const useNeon = !useAllSources && typeFilter === 'metodika';
+const useNeonFs = !useAllSources && typeFilter === 'metodika_fs';
+const useCelniNeon = !useAllSources && typeFilter === 'metodika_celni';
+const useUoouNeon = !useAllSources && typeFilter === 'metodika_uoou';
+const useIfrsNeon = !useAllSources && typeFilter === 'metodika_ifrs';
+      const useMvNeon = !useAllSources && typeFilter === 'metodika_mv';
+const useEruNeon = !useAllSources && typeFilter === 'metodika_eru';
+const useMmrNeon = !useAllSources && typeFilter === 'metodika_mmr';
+const useCusNeon = !useAllSources && typeFilter === 'cus_podnikatele';
+const usePredpisyEuNeon = !useAllSources && typeFilter === 'predpis_eu';
       
-      const useUohsNeon = typeFilter === 'rozhodnuti_uohs';
-      const useSoudniPrezkumNeon = typeFilter === 'soudni_prezkum_uohs';
- const useZakonyNeon = ZAKONY_NEON_DOC_TYPES.has(typeFilter) || typeFilter === ''; // ZMENA 2026-08-31: 'Vse' (typeFilter=='') take musi jit do Neonu
+      const useUohsNeon = !useAllSources && typeFilter === 'rozhodnuti_uohs';
+      const useSoudniPrezkumNeon = !useAllSources && typeFilter === 'soudni_prezkum_uohs';
+ const useZakonyNeon = !useAllSources && ZAKONY_NEON_DOC_TYPES.has(typeFilter); // F-02 (2026-09-24): "Vse" ma vlastni vetev nize (fetchAllSourcesPage), jednorazova vyjimka pro Neon zakony byla odstranena
 let data, error, count;
-if (useSecondDb) {
+if (useAllSources) {
+  ({ data, error, count } = await fetchAllSourcesPage(search, page));
+} else if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
 const rpcRes = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: typeFilter, p_search: search || null, p_limit: DB_PAGE_SIZE, p_offset: off });
 if (rpcRes.error) { data = null; error = rpcRes.error; count = 0; }
