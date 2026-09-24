@@ -36,8 +36,15 @@ def db_connect(url, timeout=15):
     raise last_err
 
 
+import sys
+
 NL = chr(10)
 TAB = chr(9)
+
+# F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
+# noveho" od "behem behu doslo ke skutecne chybe" - druhy pripad ma za
+# nasledek nenulovy exit kod z main().
+_STATE = {"had_errors": False}
 
 NEON_DB_URL = os.environ["NEON_ERU_DB_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -337,6 +344,7 @@ def import_new_documents(conn):
         except Exception as e:
             log("WARN: nacteni detailu selhalo: " + item["href"] + " " + str(e))
             errors += 1
+            _STATE["had_errors"] = True
             continue
 
         if detail is None:
@@ -349,16 +357,19 @@ def import_new_documents(conn):
             if resp.status_code != 200 or (resp.content[:4] != b"%PDF" and "pdf" not in resp.headers.get("Content-Type", "").lower()):
                 log("SKIP (neni PDF): " + detail["pdf_url"] + " status=" + str(resp.status_code))
                 errors += 1
+                _STATE["had_errors"] = True
                 continue
             body_text = extract_pdf_text(resp.content)
         except Exception as e:
             log("WARN: stahovani/extrakce selhala: " + detail["pdf_url"] + " " + str(e))
             errors += 1
+            _STATE["had_errors"] = True
             continue
 
         if not body_text or len(body_text) < 20:
             log("SKIP (malo textu): " + detail["pdf_url"])
             errors += 1
+            _STATE["had_errors"] = True
             continue
 
         title = detail["title"] or item["title"]
@@ -401,6 +412,7 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("WARN: embed failed: " + str(chunk_id) + " " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -425,6 +437,9 @@ def main():
     finally:
         conn.close()
     log("=== ERU metodiky sync (Neon): hotovo ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
