@@ -1302,28 +1302,54 @@ const parts = types.map((t, i) => `${docTypeLabel(t)}: ${results[i].count || 0}`
 el.innerHTML = `<strong>Celkem dokumentů: ${total}</strong><br>` + parts.join(' &middot; ');
 }
 
+const JUDIKAT_NS_TYPES = ['judikat', 'judikat_ns', 'judikat_nss'];
+// F-02 (2026-09-24): druha Supabase databaze (NS judikatura) uklada
+// judikaturu pod 3 ruznymi doc_type hodnotami (judikat = Vrchni soudy,
+// judikat_ns = Nejvyssi soud, judikat_nss = Nejvyssi spravni soud), ale UI
+// ma jen jednu dlazdici "Judikat". Tato funkce je transparentne sluci do
+// jednoho presne strankovaneho seznamu - pouziva se jak pro samotnou
+// dlazdici "Judikat", tak jako jedna polozka v ramci "Vse" nize.
+async function fetchJudikatCombinedPage(search, limit, offset) {
+  const counts = await Promise.all(JUDIKAT_NS_TYPES.map(async (dt) => {
+    try {
+      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: dt, p_search: search || null, p_limit: 1, p_offset: 0 });
+      return (!r.error && r.data && typeof r.data.count === 'number') ? r.data.count : 0;
+    } catch (e) {
+      return 0;
+    }
+  }));
+
+  const globalOffset = offset;
+  const globalEnd = offset + limit;
+  let cum = 0;
+  const segments = [];
+  for (let i = 0; i < JUDIKAT_NS_TYPES.length; i++) {
+    const segStart = cum;
+    const segEnd = cum + counts[i];
+    cum = segEnd;
+    const overlapStart = Math.max(segStart, globalOffset);
+    const overlapEnd = Math.min(segEnd, globalEnd);
+    if (overlapStart < overlapEnd) {
+      segments.push({ docType: JUDIKAT_NS_TYPES[i], localOffset: overlapStart - segStart, localLimit: overlapEnd - overlapStart });
+    }
+  }
+  const totalCount = cum;
+
+  const segResults = await Promise.all(segments.map(async (seg) => {
+    try {
+      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: seg.docType, p_search: search || null, p_limit: seg.localLimit, p_offset: seg.localOffset });
+      return (!r.error && r.data && r.data.data) ? r.data.data : [];
+    } catch (e) {
+      return [];
+    }
+  }));
+
+  return { data: segResults.flat(), count: totalCount };
+}
+
 const VSE_SOURCE_DEFS = [
   { key: 'zakony', fetchPage: (search, limit, offset) => callFn('zakony-db', { action: 'list', doc_type: null, search: search || null, limit, offset }) },
-  { key: 'judikat', fetchPage: async (search, limit, offset) => {
-      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat', p_search: search || null, p_limit: limit, p_offset: offset });
-      if (r.error) throw r.error;
-      return { data: r.data.data, count: r.data.count };
-    } },
-  // F-02 (2026-09-24): "Judikát" chip v UI mapuje jen na doc_type 'judikat'
-  // (Vrchní soudy), ale druha Supabase databaze obsahuje i judikat_ns
-  // (Sbírka NS) a judikat_nss (Sbírka NSS) - bez teto zvlastni polozky by
-  // "Vse" tato 1723 rozhodnuti (832+891) preskocilo uplne, protoze pro ne
-  // v UI neexistuje samostatny filtr.
-  { key: 'judikat_ns', fetchPage: async (search, limit, offset) => {
-      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat_ns', p_search: search || null, p_limit: limit, p_offset: offset });
-      if (r.error) throw r.error;
-      return { data: r.data.data, count: r.data.count };
-    } },
-  { key: 'judikat_nss', fetchPage: async (search, limit, offset) => {
-      const r = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: 'judikat_nss', p_search: search || null, p_limit: limit, p_offset: offset });
-      if (r.error) throw r.error;
-      return { data: r.data.data, count: r.data.count };
-    } },
+  { key: 'judikat', fetchPage: (search, limit, offset) => fetchJudikatCombinedPage(search, limit, offset) },
   { key: 'rozhodnuti_uohs', fetchPage: (search, limit, offset) => callFn('uohs-neon-db', { action: 'list', search: search || null, limit, offset }) },
   { key: 'soudni_prezkum_uohs', fetchPage: (search, limit, offset) => callFn('uohs-neon-db', { action: 'list', source: 'soudni_prezkum', search: search || null, limit, offset }) },
   { key: 'metodika', fetchPage: (search, limit, offset) => callFn('metodiky-db', { action: 'list', search: search || null, limit, offset }) },
@@ -1412,9 +1438,13 @@ if (useAllSources) {
   ({ data, error, count } = await fetchAllSourcesPage(search, page));
 } else if (useSecondDb) {
 const off = page * DB_PAGE_SIZE;
-const rpcRes = await supabaseNs.rpc('list_documents_by_type', { p_doc_type: typeFilter, p_search: search || null, p_limit: DB_PAGE_SIZE, p_offset: off });
-if (rpcRes.error) { data = null; error = rpcRes.error; count = 0; }
-else { data = rpcRes.data.data; error = null; count = rpcRes.data.count; }
+// F-02 (2026-09-24): "Judikat" ted zahrnuje i judikat_ns/judikat_nss (viz fetchJudikatCombinedPage)
+try {
+  const r = await fetchJudikatCombinedPage(search, DB_PAGE_SIZE, off);
+  data = r.data; error = null; count = r.count;
+} catch (e) {
+  data = null; error = e; count = 0;
+}
 } else if (useNeon) {
 const off = page * DB_PAGE_SIZE;
 try {
