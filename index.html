@@ -1279,8 +1279,12 @@ const el = $('db-stats');
 el.textContent = 'Načítám…';
 const results = await Promise.all(types.map(async t => {
 if (SECOND_DB_DOC_TYPES.has(t)) {
-const r = await supabaseNs.rpc('count_documents_by_type', { p_doc_type: t });
-return { count: r.error ? 0 : (r.data || 0) };
+// F-02 (2026-09-24): "Judikat" v prehledu ted take zahrnuje judikat_ns/judikat_nss
+// (Sbirka NS/NSS), ne jen justice_vrchni - viz fetchJudikatCombinedPage nize.
+const extraTypes = t === 'judikat' ? ['judikat_ns', 'judikat_nss'] : [];
+const rs = await Promise.all([t, ...extraTypes].map(dt => supabaseNs.rpc('count_documents_by_type', { p_doc_type: dt })));
+const sum = rs.reduce((s, r) => s + (r.error ? 0 : (r.data || 0)), 0);
+return { count: sum };
 }
 if (t === 'metodika') { try { const r = await callFn('metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
 if (t === 'metodika_fs') { try { const r = await callFn('fs-metodiky-db', { action: 'stats' }); return { count: r.count ?? 0 }; } catch { return { count: 0 }; } }
