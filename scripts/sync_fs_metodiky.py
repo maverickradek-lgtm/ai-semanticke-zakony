@@ -38,9 +38,14 @@ def db_connect(url, timeout=15):
             time.sleep(3)
     raise last_err
 
+import sys
+
 NL = chr(10)
 TAB = chr(9)
 SCARON = chr(0x161)
+
+# F-10 (audit 2026-09-24): viz sync_uohs_neon.py pro zduvodneni.
+_STATE = {"had_errors": False}
 
 NEON_DB_URL = os.environ["NEON_FS_DB_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -300,6 +305,7 @@ def import_new_documents(conn):
                     items = list_year(series, year)
                 except requests.RequestException as e:
                     print("WARN: list_year failed: " + series + " " + str(year) + " " + str(e))
+                    _STATE["had_errors"] = True
                     continue
                 for item in items:
                     if time_left() <= 0 or new_count >= MAX_NEW_DOCS_PER_RUN:
@@ -316,6 +322,7 @@ def import_new_documents(conn):
                     except Exception as e:
                         print("WARN: download/extract failed: " + item["title"] + " " + str(e))
                         existing.add(item["external_id"])
+                        _STATE["had_errors"] = True
                         continue
                     full_text = item["description"] + NL + NL + body_text if item["description"] else body_text
                     if not full_text or len(full_text) < 20:
@@ -372,6 +379,7 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 print("WARN: embed failed: " + str(chunk_id) + " " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -393,6 +401,9 @@ def main():
         conn = embed_pending(conn, gemini_key)
     finally:
         conn.close()
+    if _STATE["had_errors"]:
+        print("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
