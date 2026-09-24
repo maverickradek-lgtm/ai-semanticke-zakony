@@ -33,8 +33,13 @@ from pypdf import PdfReader
 import psycopg2
 
 
+import sys
+
 NL = chr(10)
 TAB = chr(9)
+
+# F-10 (audit 2026-09-24): viz sync_uohs_neon.py pro zduvodneni.
+_STATE = {"had_errors": False}
 
 NEON_DB_URL = os.environ["NEON_MV_DB_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
@@ -297,10 +302,12 @@ def download_and_chunk(conn, doc_id, external_id, item):
         resp = SESSION.get(item["pdf_url"], headers=REQ_HEADERS, timeout=30)
         if resp.status_code != 200 or (resp.content[:4] != b"%PDF" and "pdf" not in resp.headers.get("Content-Type", "").lower()):
             log("SKIP (neni PDF): " + item["pdf_url"] + " status=" + str(resp.status_code))
+            _STATE["had_errors"] = True
             return 0
         body_text = extract_pdf_text(resp.content)
     except Exception as e:
         log("WARN: stahovani/extrakce selhala: " + item["pdf_url"] + " " + str(e))
+        _STATE["had_errors"] = True
         return 0
 
     if not body_text or len(body_text) < 20:
@@ -329,6 +336,7 @@ def sync_documents(conn):
             all_items.extend(items)
         except Exception as e:
             log("WARN: nepodarilo se nacist stranku " + page["url"] + ": " + str(e))
+            _STATE["had_errors"] = True
 
     new_chunks_docs = 0
     for item in all_items:
@@ -340,6 +348,7 @@ def sync_documents(conn):
             doc_id, external_id = upsert_document(conn, item)
         except Exception as e:
             log("WARN: upsert selhal pro " + item["slug"] + ": " + str(e))
+            _STATE["had_errors"] = True
             continue
         existing_chunks = chunk_count_for(conn, doc_id)
         if existing_chunks > 0:
@@ -371,6 +380,7 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("WARN: embed failed: " + str(chunk_id) + " " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -396,6 +406,9 @@ def main():
     finally:
         conn.close()
     log("=== MV metodiky pro obce sync (Neon): hotovo ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
