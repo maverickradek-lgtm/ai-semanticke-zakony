@@ -25,11 +25,17 @@ jako sync_uohs_neon.py.
 
 import os
 import re
+import sys
 import time
 from urllib.parse import urljoin, urlparse
 
 import requests
 import psycopg2
+
+# F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
+# noveho" (beh OK, 0 novych) od "behem behu doslo ke skutecne chybe" -
+# druhy pripad ma za nasledek nenulovy exit kod z main().
+_STATE = {"had_errors": False}
 
 def db_connect(url, timeout=15):
     """Pripoji se k Neonu se 4 pokusy - NAS self-hosted runner ma obcas
@@ -319,9 +325,11 @@ def import_new_documents(conn):
                 log("  + " + url + " (" + str(n_chunks) + " chunku)")
             else:
                 errors += 1
+                _STATE["had_errors"] = True
         except Exception as e:
             log("  Chyba u " + url + ": " + str(e))
             errors += 1
+            _STATE["had_errors"] = True
 
     log("Import done: " + str(imported) + " new, skipped=" + str(skipped) + " errors=" + str(errors))
     return conn
@@ -344,6 +352,7 @@ def embed_pending(conn, gemini_keys):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("WARN: embed failed: " + str(chunk_id) + " " + str(e))
+                _STATE["had_errors"] = True
                 continue
             if not vec:
                 continue
@@ -369,6 +378,9 @@ def main():
     finally:
         conn.close()
     log("=== UOOU sync (Neon): hotovo ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
