@@ -37,6 +37,7 @@ MAX_ITEMS omezuje pocet NOVE zpracovanych zakonu za jeden beh (kazdy stoji
 
 import os
 import re
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -414,6 +415,12 @@ def main():
         time.sleep(1)  # slusne tempo dotazu vuci psp.cz
 
     log(f"=== Hotovo: proverenych {attempted}, zpracovano {processed}, nenalezeno {not_found}, chyb {errors}, cas {time.time()-start_time:.0f}s ===")
+
+    # F-10 (audit 2026-09-24): nenulovy exit kod, pokud behem behu doslo
+    # ke skutecnym chybam (ne jen "0 novych polozek" - to je v poradku).
+    if errors > 0:
+        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
