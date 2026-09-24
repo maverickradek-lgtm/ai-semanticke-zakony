@@ -4,14 +4,13 @@ Zalohovaci skript ParagrAlf.
 
 Spusti pg_dump nad vsemi pripojenymi databazemi (hlavni Supabase, Supabase
 judikatura, vsech 14 Neon projektu) a nahraje komprimovane zalohy do sdilene
-slozky na Google Disku pres OAuth (vlastni Google ucet, aby se pocitalo do
-jeho ulozneho prostoru - servisni ucet zadny vlastni prostor nema a nahrani
-by selhalo s chybou storageQuotaExceeded). Po uspesnem nahrani smaze
-zalohy starsi nez posledni KEEP_LAST_N behu (retence).
+slozky na Google Disku pres OAuth ucet (refresh token), a to na Radkuv
+osobni Google Disk (5 TB prostoru), ne pres service account. Po uspesnem
+nahrani smaze zalohy starsi nez posledni KEEP_LAST_N behu (retence).
 
 Zadna databaze se timto skriptem nemodifikuje - pg_dump je pouze cteci
-operace. Pripojovaci retezce se ctou vyhradne z environment promennych
-(GitHub Actions secrets), nikdy nejsou v tomto souboru napevno.
+operace. Pripojovaci retezce a OAuth udaje se ctou vyhradne z environment
+promennych (GitHub Actions secrets), nikdy nejsou v tomto souboru napevno.
 """
 import datetime
 import os
@@ -20,12 +19,11 @@ import sys
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# ID slozky "ParagrAlf - zalohy databazi" na Google Disku (vlastni ji
-# Radkuv Google ucet, OAuth token ma k ni pristup jako on sam).
+# ID slozky "ParagrAlf - zalohy databazi" na Google Disku (Radkuv vlastni
+# ucet, OAuth aplikace ma k teto slozce pristup pres udeleny souhlas).
 DRIVE_FOLDER_ID = "1yk4JzSE4kWsWrSWEUzJkT57U5a5IQM0g"
 
 # Kolik poslednich behu zalohovani se ma na Disku drzet. Pri kadenci
@@ -74,6 +72,7 @@ def dump_database(name: str, db_url: str, out_dir: Path) -> Path | None:
         log(f"CHYBA {name}: pg_dump prekrocil casovy limit 30 min")
         return None
     if result.returncode != 0:
+        # oriznout, aby se do logu nedostal cely (mozna dlouhy) connection string v chybe
         stderr_tail = result.stderr[-1500:] if result.stderr else "(bez detailu)"
         log(f"CHYBA pri zalohovani {name}: {stderr_tail}")
         return None
@@ -86,19 +85,23 @@ def dump_database(name: str, db_url: str, out_dir: Path) -> Path | None:
 
 
 def get_drive_service():
-    """OAuth prihlaseni jako Radkuv vlastni Google ucet (ne servisni ucet -
-    ten nema vlastni ulozny prostor a nahravani souboru by selhalo).
-    Refresh token byl ziskan jednorazove pres OAuth Playground a nema
-    expiraci (OAuth klient je v produkcnim rezimu)."""
+    """Autentizace pres OAuth 2.0 refresh token (Radkuv osobni Google ucet
+    s 5 TB prostoru), ne pres service account - service account ma vlastni
+    (nulovy) kvoty a nema pristup k Radkove slozce bez explicitniho sdileni.
+    Refresh token byl jednorazove ziskan pres OAuth consent flow a ulozeny
+    jako GitHub secret; knihovna si z nej pri kazdem behu sama vyzada novy
+    pristupovy token."""
+    client_id = os.environ["GDRIVE_OAUTH_CLIENT_ID"]
+    client_secret = os.environ["GDRIVE_OAUTH_CLIENT_SECRET"]
+    refresh_token = os.environ["GDRIVE_OAUTH_REFRESH_TOKEN"]
     creds = Credentials(
         token=None,
-        refresh_token=os.environ["GDRIVE_OAUTH_REFRESH_TOKEN"],
+        refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ["GDRIVE_OAUTH_CLIENT_ID"],
-        client_secret=os.environ["GDRIVE_OAUTH_CLIENT_SECRET"],
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=["https://www.googleapis.com/auth/drive"],
     )
-    creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
 
