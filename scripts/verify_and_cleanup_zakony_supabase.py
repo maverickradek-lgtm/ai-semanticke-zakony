@@ -38,6 +38,11 @@ Bezpecnostni zasady (zamerne konzervativni, protoze mazani je nevratne):
 - NIC se nesmaze, pokud pocet chunku v Neonu neodpovida presne poctu
   chunku aktualne v Supabase (ochrana proti necekanym rozdilum, napr.
   soubeznemu behu neceho jineho).
+- NIC se nesmaze, pokud i pri shodnem poctu chunku nesedi md5 hash jejich
+  obsahu mezi Supabase a Neonem (F-09 z auditu, 2026-09-24) - shodny pocet
+  sam o sobe neni dukaz shodneho obsahu.
+- Mazani chunku+dokumentu je JEDNO atomicke DELETE (cascade FK), ne dva
+  nekoordinovane kroky - viz incident 2026-08-13 v delete_batch().
 - Pokud cokoliv selze neocekavane (chyba pripojeni k shardu apod.), dany
   shard/dokument se proste PRESKOCI (nesmaze se), ne "smaze se at to stoji
   za to".
@@ -64,6 +69,7 @@ overena data v Neonu", protoze napojeni Neon shardu do ai-query bylo jiz
 drive tento projekt zivotne overeno (viz zakony_neon_embed_and_search_wiring).
 """
 
+import hashlib
 import os
 import sys
 import time
@@ -302,25 +308,101 @@ def get_referenced_document_ids():
 
 
 def get_neon_present(shard_key):
-    """Pro dany shard vrati {doc_id: pocet_chunku} pro dokumenty, ktere maji
-    v Neonu alespon 1 chunk (prazdny/rozbity dokument se nepocita jako
-    pritomny). Embedding se ZAMERNE nevyzaduje - viz zmena 2026-08-29
-    v hlavnim docstringu modulu."""
+    """Pro dany shard vrati {doc_id: (pocet_chunku, md5_hash_obsahu)} pro
+    dokumenty, ktere maji v Neonu alespon 1 chunk (prazdny/rozbity dokument
+    se nepocita jako pritomny). Embedding se ZAMERNE nevyzaduje - viz zmena
+    2026-08-29 v hlavnim docstringu modulu.
+
+    ZMENA 2026-09-24 (F-09 z auditu, na zadost Radka): pridan md5 hash
+    obsahu vsech chunku dokumentu (serazenych podle chunk_index) - shodny
+    POCET chunku sam o sobe neni dukaz shodneho OBSAHU. Hash se porovnava
+    se stejne spocitanym hashem na Supabase strane - viz
+    get_supabase_chunk_hashes."""
     conn = db_connect(NEON_URLS[shard_key])
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select d.id, count(c.id)
+                select d.id, count(c.id),
+                    md5(string_agg(coalesce(c.content, ''), '|' order by c.chunk_index))
                 from documents d
                 join chunks c on c.document_id = d.id
                 group by d.id
                 """
             )
             rows = cur.fetchall()
-            return {str(doc_id): cnt for doc_id, cnt in rows}
+            return {str(doc_id): (cnt, content_hash) for doc_id, cnt, content_hash in rows}
     finally:
         conn.close()
+
+
+def _fetch_storage_content(chunk_id):
+    """Dotahne obsah chunku ulozeny mimo Postgres ve Storage bucketu (viz
+    migrate_chunks_to_storage.py) - u velkych chunku je sloupec
+    chunks.content prazdny a skutecny text je jen tam."""
+    try:
+        r = SESSION.get(
+            f"{SUPABASE_URL}/storage/v1/object/{CHUNK_STORAGE_BUCKET}/{chunk_id}.txt",
+            headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return None
+        return r.text
+    except Exception:
+        return None
+
+
+def get_supabase_chunk_hashes(doc_ids):
+    """Pro dane dokumenty vrati ({doc_id: pocet_chunku}, {doc_id: md5_hash}) -
+    hash je md5 nad obsahem VSECH chunku dokumentu, serazenych podle
+    chunk_index a spojenych znakem '|' (presne stejny vzorec jako na Neon
+    strane - viz get_neon_present), aby shodny POCET chunku uz nestacil jako
+    dukaz shodneho OBSAHU (F-09 z auditu - drive se overoval jen pocet).
+
+    U chunku s prazdnym sloupcem content (velky obsah presunuty do Storage,
+    viz _fetch_storage_content) se text dotahne zvlast, jinak by hash skoro
+    vzdy nesedel a nic by se nikdy bezpecne nesmazalo."""
+    counts = {}
+    hashes = {}
+    if not doc_ids:
+        return counts, hashes
+    chunks_by_doc = {}
+    doc_batch = 20
+    ids = list(doc_ids)
+    for i in range(0, len(ids), doc_batch):
+        batch = ids[i : i + doc_batch]
+        page = 1000
+        offset = 0
+        while True:
+            rows = sb_get(
+                "chunks",
+                {
+                    "select": "id,document_id,chunk_index,content",
+                    "document_id": f"in.({','.join(batch)})",
+                    "order": "id.asc",
+                    "limit": str(page),
+                    "offset": str(offset),
+                },
+            )
+            if not rows:
+                break
+            for r in rows:
+                content = r.get("content") or ""
+                if not content:
+                    content = _fetch_storage_content(r["id"]) or ""
+                chunks_by_doc.setdefault(r["document_id"], []).append(
+                    (r.get("chunk_index") or 0, content)
+                )
+            offset += page
+            if len(rows) < page:
+                break
+    for doc_id, parts in chunks_by_doc.items():
+        parts.sort(key=lambda p: p[0])
+        counts[doc_id] = len(parts)
+        joined = "|".join(p[1] for p in parts)
+        hashes[doc_id] = hashlib.md5(joined.encode("utf-8")).hexdigest()
+    return counts, hashes
 
 
 def get_chunk_ids_for_documents(doc_ids):
@@ -391,11 +473,17 @@ def delete_storage_objects(chunk_ids):
 
 
 def delete_batch(doc_ids):
+    """ZMENA 2026-09-24 (F-09 z auditu, na zadost Radka): drive dve
+    nekoordinovane DELETE volani (chunks, pak documents) - pri chybe mezi
+    nimi zustal dokument v napulsmazanem stavu (presne to se stalo v
+    incidentu 2026-08-13: davka 28 dokumentu prisla o chunky, ale smazani
+    samotnych zaznamu dokumentu selhalo). chunks.document_id ma FK ON
+    DELETE CASCADE (overeno 2026-09-24), takze staci JEDNO DELETE na
+    documents - chunky se smazou ve STEJNE atomicke transakci."""
     if not doc_ids:
         return
     ids_expr = f"in.({','.join(doc_ids)})"
     chunk_ids = get_chunk_ids_for_documents(doc_ids)
-    sb_delete("chunks", {"document_id": ids_expr})
     sb_delete("documents", {"id": ids_expr})
     delete_storage_objects(chunk_ids)
 
@@ -475,14 +563,14 @@ def main():
             break
 
         try:
-            sb_chunk_counts = get_supabase_chunk_counts(round_candidates)
+            sb_chunk_counts, sb_chunk_hashes = get_supabase_chunk_hashes(round_candidates)
         except Exception as e:
-            log(f"  CHYBA pri cteni poctu chunku v Supabase (i po retry), koncim tento beh pro jistotu: {e}")
+            log(f"  CHYBA pri cteni poctu/hashe chunku v Supabase (i po retry), koncim tento beh pro jistotu: {e}")
             break
 
         safe_to_delete = []
         for doc_id in round_candidates:
-            neon_count = neon_present.get(doc_id, 0)  # ZMENA 2026-08-29 #6: 0-chunkove kandidaty nejsou v neon_present
+            neon_count, neon_hash = neon_present.get(doc_id, (0, None))  # ZMENA 2026-08-29 #6: 0-chunkove kandidaty nejsou v neon_present
             sb_count = sb_chunk_counts.get(doc_id, 0)
             title = candidates[doc_id].get("title", "")[:60]
             if sb_count == 0:
@@ -501,6 +589,12 @@ def main():
                 continue
             if neon_count != sb_count:
                 log(f"  PRESKAKUJI {doc_id} ({title}): pocet chunku nesedi (Neon={neon_count}, Supabase={sb_count})")
+                remaining.remove(doc_id)
+                continue
+            sb_hash = sb_chunk_hashes.get(doc_id)
+            if sb_hash != neon_hash:
+                # F-09 z auditu: shodny POCET chunku neni dukaz shodneho OBSAHU.
+                log(f"  PRESKAKUJI {doc_id} ({title}): pocet chunku sedi ({sb_count}), ale OBSAH nesedi (Supabase hash={sb_hash}, Neon hash={neon_hash})")
                 remaining.remove(doc_id)
                 continue
             safe_to_delete.append(doc_id)
