@@ -31,6 +31,51 @@ type CtxItem = { doc_title: string; doc_url: string | null; doc_type: string; he
 type NsMatch = CtxItem & { similarity: number };
 type HistoryTurn = { question: string; answer: string };
 
+// F-relevance (2026-09-25): specializovane zdroje (UOHS, IFRS, metodiky uradu...)
+// casto ziskaji vysoke skore podobnosti i na obecne dotazy, kde vubec nejsou
+// relevantni (obecne pravni terminy se prekryvaji). Kdyz dotaz jejich domenu
+// vubec nezminuje, jejich skore pred razenim snizime, aby v top-N neprebily
+// obecne pravo (NOZ, judikatura...).
+const SPECIALIZED_DOC_TYPES = new Set([
+  "rozhodnuti_uohs", "soudni_prezkum_uohs", "metodika", "cus_podnikatele",
+  "predpis_eu", "metodika_fs", "metodika_celni", "metodika_mv",
+  "metodika_eru", "metodika_mmr", "metodika_uoou", "metodika_ifrs",
+]);
+
+const SPECIALIZED_DOMAIN_HINTS: Record<string, RegExp> = {
+  rozhodnuti_uohs: /\bÚOHS\b|hospod[aá]řsk[ée] sout[eě][žz]|ve[rř]ejn[ée] zak[aá]zky|kart[ea]l/i,
+  soudni_prezkum_uohs: /\bÚOHS\b|hospod[aá]řsk[ée] sout[eě][žz]|ve[rř]ejn[ée] zak[aá]zky/i,
+  metodika_ifrs: /\bIFRS\b|\bIAS\b|mezin[aá]rodn[ií] ú[cč]etn[ií]/i,
+  cus_podnikatele: /\b[cč][uú]\.?s\.?\b|[cč]esk[eé] ú[cč]etn[ií] standard/i,
+  predpis_eu: /\bEU\b|evropsk[aá] unie|na[rř][ií]zen[ií] \(EU\)|sm[eě]rnice/i,
+  metodika_fs: /finan[cč]n[ií] spr[aá]v|da[nň]ov|\bDPH\b/i,
+  metodika_celni: /celn[ií]|\bcla\b/i,
+  metodika_mv: /minist?erstv[ao] vnitra|ve[rř]ejn[aá] spr[aá]va/i,
+  metodika_eru: /energetick[yý] regula[cč]n[ií]|\bERÚ\b|energetik/i,
+  metodika_mmr: /stavebn[ií] z[aá]kon|[uú]zemn[ií] pl[aá]n|minist?erstv[ao] pro m[ií]stn[ií] rozvoj/i,
+  metodika_uoou: /osobn[ií] [uú]daj|\bGDPR\b|\bÚOOÚ\b/i,
+  metodika: /metodik/i,
+};
+
+function isSpecializedDomainQuery(q: string): boolean {
+  return Object.values(SPECIALIZED_DOMAIN_HINTS).some((re) => re.test(q));
+}
+
+function matchesOwnDomain(docType: string, q: string): boolean {
+  const re = SPECIALIZED_DOMAIN_HINTS[docType];
+  return re ? re.test(q) : false;
+}
+
+function downweightSpecialized<T extends { doc_type?: string; similarity?: number }>(arr: T[], query: string, factor: number): T[] {
+  return arr.map((m) => {
+    const dt = (m as any).doc_type;
+    if (dt && SPECIALIZED_DOC_TYPES.has(dt) && !matchesOwnDomain(dt, query)) {
+      return { ...m, similarity: (m.similarity ?? 0) * factor };
+    }
+    return m;
+  });
+}
+
 function extractAsOfDate(text: string, lawCitationMatch: RegExpMatchArray | null): string | null {
   let masked = text;
   if (lawCitationMatch) {
@@ -1048,9 +1093,47 @@ Deno.serve(async (req: Request) => {
               similarity: r.similarity,
               id: r.chunk_id,
             })) as NsMatch[];
-            matches = [...mainMatches, ...nsMatches, ...uohsMatches, ...soudniPrezkumMatches, ...judikatMatches, ...metodikyMatches, ...cusMatches, ...predpisyEuMatches, ...fsMetodikyMatches, ...celniMetodikyMatches, ...mvVestnikMatches, ...eruMetodikyMatches, ...mmrMetodikyMatches, ...uoouMetodikyMatches, ...ifrsMatches, ...zakonyNeonMatches]
+            const specializedWeightedArrays = [
+              downweightSpecialized(uohsMatches, query, 0.55),
+              downweightSpecialized(soudniPrezkumMatches, query, 0.55),
+              downweightSpecialized(metodikyMatches, query, 0.55),
+              downweightSpecialized(cusMatches, query, 0.55),
+              downweightSpecialized(predpisyEuMatches, query, 0.55),
+              downweightSpecialized(fsMetodikyMatches, query, 0.55),
+              downweightSpecialized(celniMetodikyMatches, query, 0.55),
+              downweightSpecialized(mvVestnikMatches, query, 0.55),
+              downweightSpecialized(eruMetodikyMatches, query, 0.55),
+              downweightSpecialized(mmrMetodikyMatches, query, 0.55),
+              downweightSpecialized(uoouMetodikyMatches, query, 0.55),
+              downweightSpecialized(ifrsMatches, query, 0.55),
+            ];
+            matches = [...mainMatches, ...nsMatches, ...judikatMatches, ...zakonyNeonMatches, ...specializedWeightedArrays.flat()]
               .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
-              .slice(0, 10);
+              .slice(0, 20);
+
+            // F-relevance (2026-09-25): kdyz je dotaz kratky/obecny (uzivatel
+            // nefiltroval rucne podle typu, nezminuje konkretni obor a
+            // nejde o opakovane odeslani po upresnujici otazce) a mezi
+            // nejlepsimi vysledky jsou soucasne obecne (obcanske pravo /
+            // judikatura) i specializovane podnikatelske zdroje se
+            // srovnatelnym skore, je zadani pravdepodobne nejednoznacne -
+            // misto rizika spatne odpovedi radeji polozime upresnujici dotaz.
+            if (!body?.force_answer && !docTypes && query.split(/\s+/).filter(Boolean).length <= 10) {
+              const top6 = matches.slice(0, 6);
+              const hasGeneral = top6.some((m) => !SPECIALIZED_DOC_TYPES.has((m as any).doc_type));
+              const hasSpecialized = top6.some((m) => SPECIALIZED_DOC_TYPES.has((m as any).doc_type) && (m.similarity ?? 0) > 0.3);
+              if (hasGeneral && hasSpecialized && !isSpecializedDomainQuery(query)) {
+                return jsonResponse({
+                  clarify: true,
+                  message: "Váš dotaz je poměrně obecný a mohl by se týkat více oblastí. Zajímá vás to jako soukromou osobu, nebo v souvislosti s podnikáním/firmou?",
+                  options: [
+                    { label: "Jako soukromá osoba", append: " (jako soukromá osoba, občanské právo)" },
+                    { label: "V souvislosti s podnikáním", append: " (v souvislosti s podnikáním / firmou)" },
+                    { label: "Chci odpověď na původní dotaz bez upřesnění", append: "" },
+                  ],
+                }, 200);
+              }
+            }
           }
         }
       }
