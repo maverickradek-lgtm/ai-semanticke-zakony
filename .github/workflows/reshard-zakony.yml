@@ -1,0 +1,57 @@
+name: Reshardovani + cisteni zakonu (RUCNI SPUSTENI)
+
+# Radek 2026-09-25: ZAMERNE jen workflow_dispatch (rucni tlacitko), ZADNY
+# schedule. Tohle se tyka samotneho zakladu smyslu aplikace, takze dokud
+# nebude vysledek nekolikrat rucne overeny, nema bezet samo od sebe.
+on:
+  workflow_dispatch:
+    inputs:
+      docs_per_batch:
+        description: "Kolik dokumentu na jednu davku (uvnitr jednoho behu)"
+        required: false
+        default: "25"
+      time_budget_seconds:
+        description: "Casovy rozpocet behu v sekundach"
+        required: false
+        default: "3000"
+
+concurrency:
+  group: reshard-zakony-solo
+  cancel-in-progress: false
+
+jobs:
+  reshard:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 55
+    steps:
+      - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
+        run: |
+          for i in $(seq 1 30); do
+            getent hosts github.com >/dev/null 2>&1 && echo "DNS OK" && break
+            echo "DNS zatim nedostupne, cekam 10s... ($i/30)"
+            sleep 10
+          done
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Reshardovat + ocistit dalsi davku predpisu
+        env:
+          # Zdrojove shardy (puvodni, NEMENENE) - stejne secrets jako uz
+          # pouziva embed-zakony-neon.yml.
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          # Cilove (nove) shardy - Radek je zaklada rucne, pak sem prida
+          # odpovidajici secret. Zatim jen prvni (reshard-01).
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          DOCS_PER_BATCH: ${{ github.event.inputs.docs_per_batch || '25' }}
+          TIME_BUDGET_SECONDS: ${{ github.event.inputs.time_budget_seconds || '3000' }}
+        run: python scripts/reshard_and_clean_zakony.py
