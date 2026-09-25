@@ -223,13 +223,21 @@ def cz_search_text(clean_text: str) -> str:
 # DB pripojeni
 # ---------------------------------------------------------------------------
 
-def connect_source(project_id_unused, name):
+def connect_source(project_id_unused, name, retries=3):
     """Pripojeni ke zdrojovemu shardu - ocekava env var
     NEON_ZAKONY_<NAME_UPPER>_DB_URL (stejne jmeno jako pouziva stavajici
     embed_zakony_neon.py, aby slo znovupouzit uz existujici GitHub secrets)."""
     env_key = f"NEON_ZAKONY_{name.upper()}_DB_URL"
     url = os.environ[env_key]
-    return psycopg2.connect(url, connect_timeout=15)
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return psycopg2.connect(url, connect_timeout=15)
+        except Exception as e:
+            last_err = e
+            log(f"   WARN pripojeni ke zdrojovemu shardu '{name}' selhalo (pokus {attempt+1}/{retries}): {e}")
+            time.sleep(3)
+    raise last_err
 
 
 def connect_target(env_key, retries=3):
@@ -243,6 +251,43 @@ def connect_target(env_key, retries=3):
             log(f"   WARN pripojeni k cilovemu shardu selhalo (pokus {attempt+1}/{retries}): {e}")
             time.sleep(3)
     raise last_err
+
+
+def ensure_target_conn(conn, env_key):
+    """Health-check + transparentni reconnect cileveho spojeni.
+
+    Neon (free tier) po chvili neaktivity spojeni tvrde zavre
+    ('server closed the connection unexpectedly') - viz
+    neon_migration_reconnect_fix_2026-08-13 (stejny bug uz reseny v
+    migrate_zakony_to_neon.py a embed_zakony_neon.py). Tady se sahalo
+    na cilove spojeni jen jednou za davku, takze je nejzranitelnejsi -
+    volat pred kazdym pouzitim uvnitr hlavni smycky."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select 1")
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        log("   WARN cilove spojeni bylo Neonem zavreno - obnovuji...")
+        return connect_target(env_key)
+
+
+def ensure_source_conn(conn, project_id, name):
+    """Stejny health-check + reconnect, ale pro zdrojove (READ-ONLY) spojeni."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select 1")
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        log(f"   WARN zdrojove spojeni ('{name}') bylo Neonem zavreno - obnovuji...")
+        return connect_source(project_id, name)
 
 
 def get_shard_size_bytes(conn) -> int:
@@ -352,6 +397,7 @@ def main():
     # Najdi prvni cilovy shard, ktery jeste ma volne misto.
     active_target = None
     active_conn = None
+    active_env_key = None
     for name, env_key in TARGET_SHARDS:
         if env_key not in os.environ:
             log(f"   [{name}] přeskočeno - env var {env_key} neni nastavena.")
@@ -359,7 +405,7 @@ def main():
         conn = connect_target(env_key)
         size = get_shard_size_bytes(conn)
         if size < SHARD_BUDGET_BYTES:
-            active_target, active_conn = name, conn
+            active_target, active_conn, active_env_key = name, conn, env_key
             log(f"   Aktivni cilovy shard: '{name}' ({size/1024/1024:.1f} MB / "
                 f"{SHARD_BUDGET_BYTES/1024/1024:.0f} MB rozpoctu).")
             break
@@ -393,10 +439,12 @@ def main():
         src_conn = connect_source(src_project_id, src_name)
         try:
             while time_left() > 30:
+                src_conn = ensure_source_conn(src_conn, src_project_id, src_name)
                 docs = fetch_source_documents(src_conn, already_migrated, DOCS_PER_BATCH)
                 if not docs:
                     break  # tenhle zdrojovy shard je (pro ted) hotovy
 
+                active_conn = ensure_target_conn(active_conn, active_env_key)
                 cur_size = get_shard_size_bytes(active_conn)
                 if cur_size >= SHARD_BUDGET_BYTES:
                     log(f"   Cilovy shard '{active_target}' dosahl rozpoctu "
@@ -408,7 +456,9 @@ def main():
                     return
 
                 for doc in docs:
+                    src_conn = ensure_source_conn(src_conn, src_project_id, src_name)
                     chunks = fetch_chunks_for_document(src_conn, doc["id"])
+                    active_conn = ensure_target_conn(active_conn, active_env_key)
                     write_document_and_chunks(active_conn, doc, chunks)
                     already_migrated.add(doc["id"])
                     total_migrated_docs += 1
@@ -417,7 +467,7 @@ def main():
                 log(f"   [{src_name}] zmigrovano +{len(docs)} dokumentu "
                     f"(bezici celkem: {total_migrated_docs} dok. / "
                     f"{total_migrated_chunks} chunku, cil '{active_target}' "
-                    f"~{get_shard_size_bytes(active_conn)/1024/1024:.0f} MB).")
+                    f"~{get_shard_size_bytes(ensure_target_conn(active_conn, active_env_key))/1024/1024:.0f} MB).")
 
                 if time_left() <= 30:
                     break
