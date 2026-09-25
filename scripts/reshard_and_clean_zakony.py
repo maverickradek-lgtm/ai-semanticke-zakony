@@ -4,41 +4,59 @@ Reshardovani + 3fazove ocisteni zakonu (Radek 2026-09-25).
 Cil: nahradit 4 puvodni Neon shardy (do1997 / 1998_2007 / 2008_2020 / 2021_dosud)
 sadou NOVYCH, mensich shardu, ktere:
   1) maji ocisteny content (bez HTML znacek jako <var>, <a href=...>),
-  2) maji spravne prepocitany embedding z ocisteneho textu,
-  3) maji predpocitany sloupec search_tsv (rychle plnotextove hledani pres
-     cz_light_stem - viz cz_light_stem()/cz_search_text() v Neon shardu
-     curly-union-35917887, port Apache Lucene CzechStemmer, ASL 2.0),
-  4) se pri plneni ADAPTIVNE deli na novy shard, jakmile by aktualni presahl
+  2) maji predpocitany sloupec search_tsv (rychle plnotextove hledani pres
+     cz_light_stem - port Apache Lucene CzechStemmer, ASL 2.0, overeno
+     v teto session - viz cz_light_stem()/cz_search_text() nize),
+  3) se pri plneni ADAPTIVNE deli na novy shard, jakmile by aktualni presahl
      bezpecnostni rozpocet SHARD_BUDGET_BYTES (Radek: vzdy nechat rezervu
      min. 50 MB pod 512 MB free-tier limitem Neonu).
 
-DULEZITE (Radek 2026-09-25): puvodni 4 shardy se NEMAZOU a NEMENI, dokud
-neni proces overeny. Aplikace (ai-query) dal ciste z puvodnich shardu az do
-rucniho prepnuti na nove shardy - viz PHASE_CUTOVER_TODO na konci souboru.
+DULEZITE (Radek 2026-09-25):
+  - Puvodni 4 shardy se NEMAZOU a NEMENI, dokud neni proces overeny.
+    Aplikace (ai-query) dal ciste z puvodnich shardu az do rucniho prepnuti
+    na nove shardy - viz PHASE_CUTOVER_TODO na konci souboru. Konkretne:
+    kazdy PREDPIS (dokument) zustava dostupny ve SVE PUVODNI (spatne
+    zaembedovane) podobe, dokud neni ve svem NOVEM shardu skutecne
+    zaembedovan (embedding NOT NULL) - migrace samotna (kopie+cisteni)
+    tohle jeste negarantuje, teprve embedding.
+  - Nove shardy zaklada Radek RUCNE pres Neon nastroj (ne tento skript -
+    zadny NEON_API_KEY tedy neni potreba). Skript pracuje s pevnym
+    seznamem jiz vytvorenych cilovych shardu (TARGET_SHARDS) a kdyz mu
+    dojde misto v poslednim z nich, ZASTAVI SE a jasne o tom napise do
+    logu - neni to chyba, je to signal "zaloz dalsi shard a pridej ho
+    do TARGET_SHARDS".
+  - Poradi je DVOJI a ZAMERNE ROZDILNE:
+      * MIGRACE (cisteni+kopie, tento skript) jde CHRONOLOGICKY od
+        nejstarsich predpisu k nejnovejsim - viz fetch_source_documents().
+      * EMBEDDING (samostatny navazujici skript/beh, viz PRIORITY_PREDPISY)
+        jde nejdriv podle prioritniho seznamu klicovych zakonu, pak teprve
+        podle stavajici prioritizace (is_current desc, embed_priority desc,
+        valid_until/valid_from desc - get_pending_chunks_prioritized(),
+        beze zmeny). Tento skript proto pri migraci nastavuje embed_priority
+        vysoko (PRIORITY_EMBED_PRIORITY) pro dokumenty z PRIORITY_PREDPISY,
+        aby to navazujici embedovaci beh respektoval automaticky.
 
 Beh je resumable a casove rozpoctovany (stejny vzor jako embed_zakony_neon.py) -
-da se spoustet opakovane (napr. cron), pokracuje tam, kde skoncil predchozi beh.
+da se spoustet opakovane (napr. cron), pokracuje tam, kde skoncil predchozi beh
+(sleduje se pres uz-migrovane document_id primo v cilovych shardech).
 """
 
 import os
 import re
 import sys
 import time
-import json
 import psycopg2
+import psycopg2.extras
 import requests
 
 # ---------------------------------------------------------------------------
 # Konfigurace
 # ---------------------------------------------------------------------------
 
-# Prioritni predpisy (Radek 2026-09-25 + 2026-09-25 doplneni) - tyto se maji
-# zaembedovat JAKO PRVNI po dobehnuti migrace daneho predpisu do noveho shardu
-# (embed_priority=1000), pak teprve nasleduje stavajici prioritizace
-# (is_current desc, embed_priority desc, valid_until/valid_from desc - viz
-# get_pending_chunks_prioritized() - beze zmeny).
-# Format: (cislo_predpisu, rok_predpisu) - presnejsi a spolehlivejsi nez
-# fuzzy shoda na nazvu (diakritika, ruzne varianty formulace nazvu apod.).
+# Prioritni predpisy (Radek 2026-09-25 + doplneni tyz den) - tyto se maji
+# zaembedovat JAKO PRVNI, jakmile jsou v novem shardu (embed_priority=1000),
+# pak teprve nasleduje stavajici prioritizace. Format: (cislo, rok) Sb. -
+# presnejsi a spolehlivejsi nez fuzzy shoda na nazvu.
 PRIORITY_PREDPISY = {
     (262, 2006),  # zakonik prace
     (89, 2012),   # obcansky zakonik
@@ -78,22 +96,29 @@ PRIORITY_PREDPISY = {
 }
 PRIORITY_EMBED_PRIORITY = 1000
 
+# Zdrojove (puvodni, NEMENENE) shardy - migrace z nich jen CTE, nikdy nezapisuje.
+SOURCE_SHARDS = [
+    # (jmeno, Neon project_id) - poradi je jen informativni, skutecne poradi
+    # zpracovani urcuje fetch_source_documents() (chronologicky pres VSECHNY).
+    ("do1997", "green-star-89328754"),
+    ("1998_2007", "young-brook-90913289"),
+    ("2008_2020", "curly-union-35917887"),
+    ("2021_dosud", "nameless-art-23533131"),
+]
 
-SOURCE_SHARDS = {
-    # jmeno -> (Neon project_id, DB URL env var)
-    "do1997": "green-star-89328754",
-    "1998_2007": "young-brook-90913289",
-    "2008_2020": "curly-union-35917887",
-    "2021_dosud": "nameless-art-23533131",
-}
+# Cilove (nove, CISTE) shardy - Radek je zaklada RUCNE pres Neon nastroj;
+# skript do nich zapisuje v tomto poradi, dokud se nezaplni (viz
+# SHARD_BUDGET_BYTES), pak pokracuje dalsim v seznamu. Kdyz dojdou, skript
+# se zastavi s jasnou hlaskou - NENI to auto-provisioning (viz DULEZITE
+# na zacatku souboru).
+#   env var s connection stringem se ocekava jako NEON_RESHARD_<KEY>_DB_URL
+TARGET_SHARDS = [
+    # (jmeno, env var s DB URL)
+    ("reshard-01", "NEON_RESHARD_01_DB_URL"),  # delicate-brook-34508314
+]
 
-NEON_API_KEY = os.environ["NEON_API_KEY"]
-NEON_ORG_ID = os.environ.get("NEON_ORG_ID")  # org-round-meadow-10799977
-NEON_API_BASE = "https://console.neon.tech/api/v2"
-
-SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-ADMIN_USER_ID = "2648f5db-bea6-4cac-b490-ad0ec59723df"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 GEMINI_API_KEY_POOL = [k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL", "").split(",") if k.strip()]
 EMBED_MODEL = "gemini-embedding-001"
@@ -104,13 +129,9 @@ SHARD_HARD_LIMIT_BYTES = 512 * 1024 * 1024
 SHARD_SAFETY_MARGIN_BYTES = 50 * 1024 * 1024
 SHARD_BUDGET_BYTES = SHARD_HARD_LIMIT_BYTES - SHARD_SAFETY_MARGIN_BYTES  # 462 MB
 
+DOCS_PER_BATCH = int(os.environ.get("DOCS_PER_BATCH", "25"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 START_TIME = time.time()
-
-# Stavovy soubor (progres migrace) - ulozeny primo v Supabase jako jednoducha
-# key/value tabulka `migration_state`, aby beh prezival mezi GitHub Actions
-# spustenimi (efemerni runner nema trvaly disk).
-STATE_KEY = "reshard_zakony_v1"
 
 
 def log(*a):
@@ -124,8 +145,9 @@ def time_left():
 
 # ---------------------------------------------------------------------------
 # Cesky "light stemmer" (port Apache Lucene CzechStemmer, ASL 2.0) -
-# MUSI byt bit-identicky s Postgres funkci cz_light_stem() pouzivanou pri
-# dotazech v ai-query, jinak by se dotaz a index rozesly.
+# MUSI byt bit-identicky s Postgres funkci cz_light_stem() pouzivanou v
+# ai-query, jinak by se dotaz a index rozesly. Overeno v teto session proti
+# realnym datum (napr. "byt"/"bytu"/"bytech"/"bytu" -> "byt").
 # ---------------------------------------------------------------------------
 
 _CASE_5 = ("atech",)
@@ -134,7 +156,7 @@ _CASE_3 = ("ech", "ich", "ích", "ého", "ěmi", "emi", "ému", "ěte", "ete", "
            "eti", "ího", "iho", "ími", "ímu", "imu", "ách", "ata", "aty", "ých",
            "ama", "ami", "ové", "ovi", "ými")
 _CASE_2 = ("em", "es", "ém", "ím", "ům", "at", "ám", "os", "us", "ým", "mi", "ou")
-_VOWELS_1 = set("aeiouůyáéíý ě".replace(" ", ""))
+_VOWELS_1 = set("aeiouůyáéíýě")
 _POSSESSIVE_2 = ("ov", "in", "ův")
 
 
@@ -174,184 +196,53 @@ def cz_light_stem(word: str) -> str:
 
 _WORD_RE = re.compile(r"[^a-zá-ěí-ňó-žA-ZÁ-ĚÍ-ŇÓ-Ž0-9]+")
 _TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
 
 
 def clean_html(raw: str) -> str:
-    """Odstrani HTML znacky (<var>, <a href=...>, atd.) - Fáze 1 cisteni.
+    """Odstrani HTML znacky (<var>, <a href=...>, atd.) - Faze 1 cisteni.
     Nahrazuje znackou mezerou (ne prazdnym retezcem), aby se slova na obou
-    stranach znacky neslepila dohromady."""
+    stranach znacky neslepila dohromady. Overeno v teto session na realnem
+    dokumentu (zakon 143/1919 Sb.)."""
     if not raw:
         return raw or ""
     text = _TAG_RE.sub(" ", raw)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = _WS_RE.sub(" ", text).strip()
     return text
 
 
 def cz_search_text(clean_text: str) -> str:
-    """Stejna logika jako Postgres funkce cz_search_text() - vrati retezec
-    stemovanych slov oddelenych mezerou, pro to_tsvector('simple', ...)."""
+    """Stejna logika jako Postgres funkce cz_search_text() v cilovych
+    shardech - vrati retezec stemovanych slov oddelenych mezerou, pro
+    to_tsvector('simple', ...)."""
     tokens = [t for t in _WORD_RE.split(clean_text.lower()) if t]
     return " ".join(cz_light_stem(t) for t in tokens)
 
 
 # ---------------------------------------------------------------------------
-# Gemini embedding (znovupouziti logiky z embed_zakony_neon.py)
+# DB pripojeni
 # ---------------------------------------------------------------------------
 
-class RateLimitStop(Exception):
-    pass
+def connect_source(project_id_unused, name):
+    """Pripojeni ke zdrojovemu shardu - ocekava env var
+    NEON_ZAKONY_<NAME_UPPER>_DB_URL (stejne jmeno jako pouziva stavajici
+    embed_zakony_neon.py, aby slo znovupouzit uz existujici GitHub secrets)."""
+    env_key = f"NEON_ZAKONY_{name.upper()}_DB_URL"
+    url = os.environ[env_key]
+    return psycopg2.connect(url, connect_timeout=15)
 
 
-_consecutive_429 = {}
-MAX_CONSECUTIVE_429 = 10
-
-
-def embed_text(text, gemini_key, retries=3, track_key="default"):
-    global _consecutive_429
+def connect_target(env_key, retries=3):
+    url = os.environ[env_key]
+    last_err = None
     for attempt in range(retries):
         try:
-            resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent",
-                headers={"Content-Type": "application/json", "x-goog-api-key": gemini_key},
-                json={
-                    "content": {"parts": [{"text": (text or "")[:8000]}]},
-                    "taskType": "RETRIEVAL_DOCUMENT",
-                    "outputDimensionality": EMBED_DIM,
-                },
-                timeout=30,
-            )
-            if resp.status_code == 429:
-                n = _consecutive_429.get(track_key, 0) + 1
-                _consecutive_429[track_key] = n
-                if n >= MAX_CONSECUTIVE_429:
-                    raise RateLimitStop(f"{n}x 429 pro klic '{track_key}'")
-                time.sleep(5 * (attempt + 1))
-                continue
-            resp.raise_for_status()
-            vec = resp.json().get("embedding", {}).get("values")
-            _consecutive_429[track_key] = 0
-            return vec or None
-        except requests.RequestException as e:
-            if attempt == retries - 1:
-                log(f"   WARN embed_text vyjimka: {e}")
-                raise
-            time.sleep(3 * (attempt + 1))
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Neon API - vytvoreni noveho shardu za behu (adaptivni deleni)
-# ---------------------------------------------------------------------------
-
-NEW_SHARD_SCHEMA_SQL = """
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE IF NOT EXISTS documents (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_id uuid NOT NULL,
-    external_id text NOT NULL,
-    doc_type text NOT NULL,
-    title text NOT NULL,
-    issuer text,
-    decision_date date,
-    effective_date date,
-    url text,
-    status text,
-    content_hash text,
-    fetched_at timestamptz NOT NULL DEFAULT now(),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    skip_embedding boolean NOT NULL DEFAULT false,
-    embed_priority integer NOT NULL DEFAULT 0,
-    version_iri text,
-    valid_from date,
-    valid_until date,
-    superseded_by uuid,
-    is_current boolean NOT NULL DEFAULT true,
-    explains_document_id uuid,
-    predpis_cislo integer,
-    predpis_rok integer,
-    has_pending_chunks boolean NOT NULL DEFAULT true
-);
-
-CREATE TABLE IF NOT EXISTS chunks (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id uuid NOT NULL REFERENCES documents(id),
-    chunk_index integer NOT NULL,
-    heading text,
-    content text,
-    embedding vector(256),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    search_tsv tsvector,
-    UNIQUE(document_id, chunk_index)
-);
-
-CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks(document_id);
-CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
-    USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_chunks_search_tsv ON chunks USING gin(search_tsv);
-
--- stejna funkce jako v curly-union-35917887 (match_chunks) - beze zmeny
-CREATE OR REPLACE FUNCTION match_chunks(
-    query_embedding vector, match_count integer DEFAULT 8,
-    min_similarity double precision DEFAULT 0.55, p_as_of date DEFAULT NULL
-) RETURNS TABLE(chunk_id uuid, document_id uuid, heading text, content text,
-    similarity double precision, doc_title text, doc_url text, doc_type text)
-LANGUAGE plpgsql STABLE AS $f$
-begin
-    return query
-    select c.id, c.document_id, c.heading, c.content,
-        (1 - (c.embedding <=> query_embedding))::float, d.title, d.url, d.doc_type
-    from chunks c join documents d on d.id = c.document_id
-    where case when p_as_of is null then d.is_current = true
-        else (d.valid_from is null or d.valid_from <= p_as_of)
-        and (d.valid_until is null or p_as_of <= d.valid_until) end
-        and (1 - (c.embedding <=> query_embedding)) >= min_similarity
-    order by c.embedding <=> query_embedding limit match_count;
-end;
-$f$;
-"""
-# POZOR: cz_light_stem / cz_search_text funkce se do noveho shardu kopiruji
-# samostatne (viz deploy_cz_functions_sql nize) - je to dost dlouhy SQL na
-# to, aby byl v teto konstante duplikovany rucne; script ho natahuje ze
-# souboru cz_functions.sql (viz REQUIRES). Pred prvnim behem zkopirovat
-# definice cz_light_stem/cz_search_text z curly-union-35917887 (uz overene
-# a nasazene v teto session) do souboru scripts/sql/cz_functions.sql.
-
-
-def neon_api(method, path, **kwargs):
-    resp = requests.request(
-        method, f"{NEON_API_BASE}{path}",
-        headers={"Authorization": f"Bearer {NEON_API_KEY}", "Content-Type": "application/json"},
-        timeout=60, **kwargs,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def create_new_shard(name_suffix: str):
-    """Vytvori novy Neon projekt + schema, vrati (project_id, db_url)."""
-    body = {
-        "project": {
-            "name": f"ai-semanticke-zakony-{name_suffix}",
-            "region_id": "aws-eu-central-1",
-            "pg_version": 18,
-        }
-    }
-    if NEON_ORG_ID:
-        body["project"]["org_id"] = NEON_ORG_ID
-    data = neon_api("POST", "/projects", json=body)
-    project_id = data["project"]["id"]
-    conn_uri = data["connection_uris"][0]["connection_uri"]
-    log(f"   Vytvoren novy Neon shard '{name_suffix}' (project_id={project_id})")
-
-    conn = psycopg2.connect(conn_uri, connect_timeout=15)
-    with conn.cursor() as cur:
-        cur.execute(NEW_SHARD_SCHEMA_SQL)
-    conn.commit()
-    conn.close()
-    log(f"   Schema pripravena v '{name_suffix}'")
-    return project_id, conn_uri
+            return psycopg2.connect(url, connect_timeout=15)
+        except Exception as e:
+            last_err = e
+            log(f"   WARN pripojeni k cilovemu shardu selhalo (pokus {attempt+1}/{retries}): {e}")
+            time.sleep(3)
+    raise last_err
 
 
 def get_shard_size_bytes(conn) -> int:
@@ -360,33 +251,210 @@ def get_shard_size_bytes(conn) -> int:
         return cur.fetchone()[0]
 
 
+def ensure_migration_tracking(conn):
+    """V cilovem shardu potrebujeme vedet, ktere document_id uz maji svuj
+    puvodni protejsek zmigrovany (idempotence pri opakovanych behich) -
+    document.id se pri migraci ZACHOVAVA (kopiruje 1:1), takze staci
+    kontrolovat existenci."""
+    with conn.cursor() as cur:
+        cur.execute("select id from documents")
+        return {row[0] for row in cur.fetchall()}
+
+
 # ---------------------------------------------------------------------------
-# TODO / PHASE_CUTOVER_TODO - co je potreba udelat RUCNE po dobehnuti migrace,
-# nez se stare shardy smazou (Radek 2026-09-25: nemazat, dokud neni overeno):
-#
-#  1. Overit v novych shardech: pocty dokumentu/chunku souhlasi s puvodnimi,
-#     nahodny vzorek obsahu je spravne ocisteny (bez HTML), embedding a
-#     search_tsv jsou vyplnene u vsech radku.
-#  2. V ai-query pridat docasne DEBUG-only cteni z novych shardu vedle
-#     stavajicich (stejny vzor jako body.debug v teto session), porovnat
-#     kvalitu odpovedi na sade testovacich dotazu.
-#  3. Az bude jiste, ze nove shardy funguji spravne a rychleji, prepnout
-#     ai-query natvrdo na nove shardy (nove NEON_*_DB_URL secrets).
-#  4. Teprve POTE smazat puvodni 4 shardy (do1997/1998_2007/2008_2020/
-#     2021_dosud) a uvolnit jejich Neon projekty.
-#  5. Znovu zapnout planovac v embed-zakony-neon.yml (nebo jeho naslednika
-#     pro nove shardy), az bude bezici migrace u konce.
+# Cteni ze zdroje - CHRONOLOGICKY (nejstarsi napred), napric vsemi 4 shardy
 # ---------------------------------------------------------------------------
 
+def fetch_source_documents(conn, already_migrated_ids, limit):
+    """Vraci az `limit` dosud nezmigrovanych dokumentu z jednoho zdrojoveho
+    shardu, serazenych chronologicky (nejstarsi napred podle valid_from,
+    pak valid_until, pak created_at jako tie-breaker)."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            select id, source_id, external_id, doc_type, title, issuer,
+                decision_date, effective_date, url, status, content_hash,
+                valid_from, valid_until, is_current, predpis_cislo, predpis_rok
+            from documents
+            order by coalesce(valid_from, valid_until, '1900-01-01'::date) asc,
+                valid_until asc nulls last, created_at asc
+            limit %s
+            """,
+            (limit * 3,),  # nabereme vic, protoze cast uz muze byt migrovana
+        )
+        rows = cur.fetchall()
+    out = [r for r in rows if r["id"] not in already_migrated_ids]
+    return out[:limit]
+
+
+def fetch_chunks_for_document(conn, document_id):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "select id, chunk_index, heading, content from chunks "
+            "where document_id = %s order by chunk_index",
+            (document_id,),
+        )
+        return cur.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Zapis do cile - vycisteny content + search_tsv, embedding NULL (doplni ho
+# az navazujici embedovaci beh - viz DULEZITE na zacatku souboru)
+# ---------------------------------------------------------------------------
+
+def write_document_and_chunks(target_conn, doc, chunks):
+    priority_key = (doc.get("predpis_cislo"), doc.get("predpis_rok"))
+    embed_priority = PRIORITY_EMBED_PRIORITY if priority_key in PRIORITY_PREDPISY else 0
+
+    with target_conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into documents
+                (id, source_id, external_id, doc_type, title, issuer,
+                 decision_date, effective_date, url, status, content_hash,
+                 valid_from, valid_until, is_current, predpis_cislo,
+                 predpis_rok, embed_priority)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            on conflict (id) do nothing
+            """,
+            (
+                doc["id"], doc["source_id"], doc["external_id"], doc["doc_type"],
+                doc["title"], doc["issuer"], doc["decision_date"], doc["effective_date"],
+                doc["url"], doc["status"], "__resharded_cleaned_v1__",
+                doc["valid_from"], doc["valid_until"], doc["is_current"],
+                doc["predpis_cislo"], doc["predpis_rok"], embed_priority,
+            ),
+        )
+        for c in chunks:
+            cleaned = clean_html(c["content"])
+            search_text = cz_search_text(cleaned)
+            cur.execute(
+                """
+                insert into chunks (id, document_id, chunk_index, heading, content, search_tsv)
+                values (%s,%s,%s,%s,%s, to_tsvector('simple', %s))
+                on conflict (id) do nothing
+                """,
+                (c["id"], doc["id"], c["chunk_index"], c["heading"], cleaned, search_text),
+            )
+    target_conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Hlavni beh
+# ---------------------------------------------------------------------------
 
 def main():
-    log("Tento skript je navrzen jako kostra/zaklad pro reshardovani + cisteni.")
-    log("Pred prvnim ostrym behem je potreba jeste:")
-    log(" 1) zkopirovat definice cz_light_stem/cz_search_text do scripts/sql/cz_functions.sql")
-    log(" 2) nastavit NEON_API_KEY (Neon 'Personal API key' s pravem vytvaret projekty)"
-    log(" 3) rozhodnout poradi zpracovani dokumentu (navrhuji: chronologicky podle")
-    log("    valid_from/valid_until, is_current dokumenty nakonec/samostatne)")
-    log("Viz komentare v souboru pro dalsi kroky.")
+    log("Reshardovani + cisteni zakonu - start.")
+    log(f"Rozpocet na shard: {SHARD_BUDGET_BYTES / 1024 / 1024:.0f} MB "
+        f"(limit {SHARD_HARD_LIMIT_BYTES/1024/1024:.0f} MB - rezerva "
+        f"{SHARD_SAFETY_MARGIN_BYTES/1024/1024:.0f} MB).")
+
+    # Najdi prvni cilovy shard, ktery jeste ma volne misto.
+    active_target = None
+    active_conn = None
+    for name, env_key in TARGET_SHARDS:
+        if env_key not in os.environ:
+            log(f"   [{name}] přeskočeno - env var {env_key} neni nastavena.")
+            continue
+        conn = connect_target(env_key)
+        size = get_shard_size_bytes(conn)
+        if size < SHARD_BUDGET_BYTES:
+            active_target, active_conn = name, conn
+            log(f"   Aktivni cilovy shard: '{name}' ({size/1024/1024:.1f} MB / "
+                f"{SHARD_BUDGET_BYTES/1024/1024:.0f} MB rozpoctu).")
+            break
+        else:
+            log(f"   [{name}] je jiz naplneny ({size/1024/1024:.1f} MB) - "
+                f"prechazim na dalsi cilovy shard v seznamu.")
+            conn.close()
+
+    if active_conn is None:
+        log("STOP: Vsechny shardy v TARGET_SHARDS jsou plne (nebo seznam je")
+        log("prazdny/nekonfigurovany). Toto NENI chyba skriptu - je potreba")
+        log("rucne zalozit dalsi cilovy Neon shard (stejna schema jako")
+        log("delicate-brook-34508314) a pridat ho do TARGET_SHARDS v tomto")
+        log("souboru (+ odpovidajici GitHub secret s connection stringem).")
+        return
+
+    already_migrated = ensure_migration_tracking(active_conn)
+    log(f"   V '{active_target}' uz je {len(already_migrated)} dokumentu.")
+
+    total_migrated_docs = 0
+    total_migrated_chunks = 0
+
+    for src_name, src_project_id in SOURCE_SHARDS:
+        if time_left() <= 30:
+            break
+        env_key = f"NEON_ZAKONY_{src_name.upper()}_DB_URL"
+        if env_key not in os.environ:
+            log(f"   [{src_name}] přeskočeno - env var {env_key} neni nastavena.")
+            continue
+
+        src_conn = connect_source(src_project_id, src_name)
+        try:
+            while time_left() > 30:
+                docs = fetch_source_documents(src_conn, already_migrated, DOCS_PER_BATCH)
+                if not docs:
+                    break  # tenhle zdrojovy shard je (pro ted) hotovy
+
+                cur_size = get_shard_size_bytes(active_conn)
+                if cur_size >= SHARD_BUDGET_BYTES:
+                    log(f"   Cilovy shard '{active_target}' dosahl rozpoctu "
+                        f"({cur_size/1024/1024:.0f} MB) - konci beh, zalozit dalsi shard.")
+                    src_conn.close()
+                    active_conn.close()
+                    log(f"CELKEM tento beh: {total_migrated_docs} dokumentu, "
+                        f"{total_migrated_chunks} chunku.")
+                    return
+
+                for doc in docs:
+                    chunks = fetch_chunks_for_document(src_conn, doc["id"])
+                    write_document_and_chunks(active_conn, doc, chunks)
+                    already_migrated.add(doc["id"])
+                    total_migrated_docs += 1
+                    total_migrated_chunks += len(chunks)
+
+                log(f"   [{src_name}] zmigrovano +{len(docs)} dokumentu "
+                    f"(bezici celkem: {total_migrated_docs} dok. / "
+                    f"{total_migrated_chunks} chunku, cil '{active_target}' "
+                    f"~{get_shard_size_bytes(active_conn)/1024/1024:.0f} MB).")
+
+                if time_left() <= 30:
+                    break
+        finally:
+            src_conn.close()
+
+    active_conn.close()
+    log(f"Hotovo (nebo dosazen casovy rozpocet). CELKEM tento beh: "
+        f"{total_migrated_docs} dokumentu, {total_migrated_chunks} chunku.")
+
+
+# ---------------------------------------------------------------------------
+# PHASE_CUTOVER_TODO - co je potreba udelat RUCNE po dobehnuti migrace+
+# embeddingu, nez se stare shardy smazou (Radek 2026-09-25: nemazat, dokud
+# neni overeno):
+#
+#  1. Samostatny navazujici skript (uprava embed_zakony_neon.py pro nove
+#     shardy misto puvodnich 4) - pouziva uz existujici
+#     get_pending_chunks_prioritized() v kazdem novem shardu, ktera
+#     automaticky respektuje embed_priority nastaveny touto migraci.
+#  2. Overit v novych shardech: pocty dokumentu/chunku souhlasi s puvodnimi,
+#     nahodny vzorek obsahu je spravne ocisteny (bez HTML), embedding a
+#     search_tsv jsou vyplnene u vsech radku.
+#  3. V ai-query pridat docasne DEBUG-only cteni z novych shardu vedle
+#     stavajicich (stejny vzor jako body.debug pouzity v teto session),
+#     porovnat kvalitu odpovedi na sade testovacich dotazu.
+#  4. Az bude jiste, ze nove shardy funguji spravne a rychleji: v ai-query
+#     PRO KAZDY DOKUMENT zvlast pouzit novy shard MISTO stareho, pokud v
+#     novem shardu ma dany dokument uz vyplneny embedding (jinak dal stary -
+#     to je presne to "zachovani starych zaembedovanych predpisu", o ktere
+#     Radek 2026-09-25 vyslovne zadal).
+#  5. Teprve POTE, az VSECHNY dokumenty maji noveho zaembedovaneho
+#     nastupce, smazat puvodni 4 shardy (do1997/1998_2007/2008_2020/
+#     2021_dosud) a uvolnit jejich Neon projekty.
+#  6. Znovu zapnout planovac v embed-zakony-neon.yml (nebo jeho naslednika
+#     pro nove shardy), az bude bezici migrace u konce.
+# ---------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
