@@ -7,8 +7,9 @@ on:
         description: "Kolik chunku max. na jeden shard v jedne davce"
         required: false
         default: "20"
-  schedule:
-    - cron: "0 */2 * * *"
+  # DOCASNE POZASTAVENO (Radek 2026-09-25): probiha reshardovani + 3faz. cisteni pipeline.
+  # schedule:
+  #   - cron: "0 */2 * * *"
 
 concurrency:
   group: embed-zakony-neon-solo
