@@ -317,26 +317,50 @@ def ensure_migration_tracking(conn):
 # Cteni ze zdroje - CHRONOLOGICKY (nejstarsi napred), napric vsemi 4 shardy
 # ---------------------------------------------------------------------------
 
-def fetch_source_documents(conn, already_migrated_ids, limit):
+def fetch_source_documents(conn, already_migrated_ids, limit, max_probe=200000):
     """Vraci az `limit` dosud nezmigrovanych dokumentu z jednoho zdrojoveho
     shardu, serazenych chronologicky (nejstarsi napred podle valid_from,
-    pak valid_until, pak created_at jako tie-breaker)."""
+    pak valid_until, pak created_at jako tie-breaker).
+
+    DULEZITA OPRAVA (Radek 2026-09-26): puvodne se natahovalo jen
+    `limit * 3` radku a filtrovalo klientsky - jakmile uz bylo
+    zmigrovano vic nez tento pocet nejstarsich radku (coz se casem
+    NEVYHNUTELNE stane, jak migrace postupuje), fetch vratil prazdno a
+    skript se mylne domnival, ze cely zdrojovy shard je hotovy, i kdyz
+    zbyvaly tisice nezmigrovanych novejsich dokumentu. Oprava: okno se
+    postupne 4x zvetsuje (limit*3 -> *12 -> *48 -> ...), dokud nenajde
+    aspon jeden nezmigrovany dokument, nebo dokud DB nevrati mene radku
+    nez se pozadovalo (opravdovy konec tabulky), nebo dokud se nedosahne
+    max_probe (bezpecnostni strop proti nekonecne rostoucimu dotazu)."""
+    probe = limit * 3
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            """
-            select id, source_id, external_id, doc_type, title, issuer,
-                decision_date, effective_date, url, status, content_hash,
-                valid_from, valid_until, is_current, predpis_cislo, predpis_rok
-            from documents
-            order by coalesce(valid_from, valid_until, '1900-01-01'::date) asc,
-                valid_until asc nulls last, created_at asc
-            limit %s
-            """,
-            (limit * 3,),  # nabereme vic, protoze cast uz muze byt migrovana
-        )
-        rows = cur.fetchall()
-    out = [r for r in rows if r["id"] not in already_migrated_ids]
-    return out[:limit]
+        while True:
+            cur.execute(
+                """
+                select id, source_id, external_id, doc_type, title, issuer,
+                    decision_date, effective_date, url, status, content_hash,
+                    valid_from, valid_until, is_current, predpis_cislo, predpis_rok
+                from documents
+                order by coalesce(valid_from, valid_until, '1900-01-01'::date) asc,
+                    valid_until asc nulls last, created_at asc
+                limit %s
+                """,
+                (probe,),
+            )
+            rows = cur.fetchall()
+            out = [r for r in rows if r["id"] not in already_migrated_ids]
+            if out:
+                return out[:limit]
+            if len(rows) < probe:
+                # DB opravdu vratila min radku, nez jsme chteli - tabulka
+                # je vycerpana, zadne dalsi (nezmigrovane) radky neexistuji.
+                return []
+            if probe >= max_probe:
+                log(f"   WARN fetch_source_documents: dosazen max_probe={max_probe} "
+                    f"bez nalezeni nezmigrovaneho dokumentu - preskakuji tento shard "
+                    f"pro tento beh (zkontroluj rucne, jestli je opravdu hotovy).")
+                return []
+            probe *= 4
 
 
 def fetch_chunks_for_document(conn, document_id):
