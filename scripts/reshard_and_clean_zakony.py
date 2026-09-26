@@ -415,6 +415,35 @@ def write_document_and_chunks(target_conn, doc, chunks):
     target_conn.commit()
 
 
+def write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunks, retries=3):
+    """Obal kolem write_document_and_chunks() - REAGUJE na skutecnou chybu
+    zapisu (ne jen preventivni health-check pred pouzitim), protoze se
+    ukazalo (2026-09-26, beh #36264627836), ze Neon dokaze spojeni zabit
+    I UPROSTRED zapisu, tesne po tom, co health-check (ensure_target_conn)
+    spojeni oznacil za zive - je to zavod mezi kontrolou a skutecnym
+    pouzitim. Pri OperationalError se stare (uz mrtve) spojeni zahodi,
+    vytvori se uplne nove (connect_target, ne jen ensure_) a cely zapis
+    tohoto JEDNOHO dokumentu se zopakuje - bezpecne diky ON CONFLICT DO
+    NOTHING a tomu, ze commit() probehne az na konci, takze pri zavazene
+    chybe se nic castecne neulozilo."""
+    conn = active_conn
+    last_err = None
+    for attempt in range(retries):
+        try:
+            write_document_and_chunks(conn, doc, chunks)
+            return conn
+        except psycopg2.OperationalError as e:
+            last_err = e
+            log(f"   WARN zapis dokumentu {doc.get('id')} selhal (pokus "
+                f"{attempt+1}/{retries}), vynucuji nove spojeni: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = connect_target(active_env_key)
+    raise last_err
+
+
 # ---------------------------------------------------------------------------
 # Hlavni beh
 # ---------------------------------------------------------------------------
@@ -489,8 +518,7 @@ def main():
                 for doc in docs:
                     src_conn = ensure_source_conn(src_conn, src_project_id, src_name)
                     chunks = fetch_chunks_for_document(src_conn, doc["id"])
-                    active_conn = ensure_target_conn(active_conn, active_env_key)
-                    write_document_and_chunks(active_conn, doc, chunks)
+                    active_conn = write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunks)
                     already_migrated.add(doc["id"])
                     total_migrated_docs += 1
                     total_migrated_chunks += len(chunks)
