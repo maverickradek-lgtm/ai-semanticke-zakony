@@ -223,10 +223,14 @@ def cz_search_text(clean_text: str) -> str:
 # DB pripojeni
 # ---------------------------------------------------------------------------
 
-def connect_source(project_id_unused, name, retries=3):
+def connect_source(project_id_unused, name, retries=4):
     """Pripojeni ke zdrojovemu shardu - ocekava env var
     NEON_ZAKONY_<NAME_UPPER>_DB_URL (stejne jmeno jako pouziva stavajici
-    embed_zakony_neon.py, aby slo znovupouzit uz existujici GitHub secrets)."""
+    embed_zakony_neon.py, aby slo znovupouzit uz existujici GitHub secrets).
+
+    Rostouci backoff (5/10/15/20s) - stejny vzor jako
+    embed_run44_dns_failure_fix_2026-09-02 (prechodne DNS vypadky na NAS
+    runneru umeji trvat i pres 30-40s, kratsi/rovnomerny retry to nestihne)."""
     env_key = f"NEON_ZAKONY_{name.upper()}_DB_URL"
     url = os.environ[env_key]
     last_err = None
@@ -235,12 +239,14 @@ def connect_source(project_id_unused, name, retries=3):
             return psycopg2.connect(url, connect_timeout=15)
         except Exception as e:
             last_err = e
-            log(f"   WARN pripojeni ke zdrojovemu shardu '{name}' selhalo (pokus {attempt+1}/{retries}): {e}")
-            time.sleep(3)
+            wait_s = 5 * (attempt + 1)
+            log(f"   WARN pripojeni ke zdrojovemu shardu '{name}' selhalo (pokus {attempt+1}/{retries}), cekam {wait_s}s: {e}")
+            time.sleep(wait_s)
     raise last_err
 
 
-def connect_target(env_key, retries=3):
+def connect_target(env_key, retries=4):
+    """Rostouci backoff (5/10/15/20s) - viz connect_source() vyse."""
     url = os.environ[env_key]
     last_err = None
     for attempt in range(retries):
@@ -248,8 +254,9 @@ def connect_target(env_key, retries=3):
             return psycopg2.connect(url, connect_timeout=15)
         except Exception as e:
             last_err = e
-            log(f"   WARN pripojeni k cilovemu shardu selhalo (pokus {attempt+1}/{retries}): {e}")
-            time.sleep(3)
+            wait_s = 5 * (attempt + 1)
+            log(f"   WARN pripojeni k cilovemu shardu selhalo (pokus {attempt+1}/{retries}), cekam {wait_s}s: {e}")
+            time.sleep(wait_s)
     raise last_err
 
 
