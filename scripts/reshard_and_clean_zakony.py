@@ -129,6 +129,17 @@ SHARD_HARD_LIMIT_BYTES = 512 * 1024 * 1024
 SHARD_SAFETY_MARGIN_BYTES = 50 * 1024 * 1024
 SHARD_BUDGET_BYTES = SHARD_HARD_LIMIT_BYTES - SHARD_SAFETY_MARGIN_BYTES  # 462 MB
 
+# Radek 2026-09-26: v dobe MIGRACE (cisteni+kopie) je embedding sloupec
+# jeste NULL - pg_database_size v tomto kroku tedy NEODRAZI budouci
+# narust az navazujici embedovaci beh dopise realne Gemini vektory +
+# HNSW index. Zmereno drive na tomto projektu (storage_scaling_plan):
+# 256-dim vektor + HNSW index ~2.3 KB/chunk. Aby shard po zaembedovani
+# nepresahl rozpocet, i kdyz v dobe migrace jeste "vypadal" volny,
+# odecitame od SHARD_BUDGET_BYTES projektovanou budouci velikost
+# (pocet chunku v shardu * ESTIMATED_EMBED_BYTES_PER_CHUNK) - viz
+# effective_migration_budget_bytes() nize.
+ESTIMATED_EMBED_BYTES_PER_CHUNK = 2300
+
 DOCS_PER_BATCH = int(os.environ.get("DOCS_PER_BATCH", "25"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 START_TIME = time.time()
@@ -303,6 +314,22 @@ def get_shard_size_bytes(conn) -> int:
         return cur.fetchone()[0]
 
 
+def get_shard_chunk_count(conn) -> int:
+    with conn.cursor() as cur:
+        cur.execute("select count(*) from chunks")
+        return cur.fetchone()[0]
+
+
+def effective_migration_budget_bytes(conn) -> int:
+    """Kolik smi cilovy shard zabirat CISTYM textem (bez embeddingu) tak,
+    aby po pozdejsim zaembedovani vsech jeho chunku porad zustal pod
+    SHARD_BUDGET_BYTES. Klesa s tim, jak pribyva chunku (kazdy dalsi
+    zmigrovany chunk "rezervuje" i svych ~2.3KB budouci embed prostor)."""
+    chunk_count = get_shard_chunk_count(conn)
+    reserved_for_future_embedding = chunk_count * ESTIMATED_EMBED_BYTES_PER_CHUNK
+    return max(0, SHARD_BUDGET_BYTES - reserved_for_future_embedding)
+
+
 def ensure_migration_tracking(conn):
     """V cilovem shardu potrebujeme vedet, ktere document_id uz maji svuj
     puvodni protejsek zmigrovany (idempotence pri opakovanych behich) -
@@ -464,13 +491,16 @@ def main():
             continue
         conn = connect_target(env_key)
         size = get_shard_size_bytes(conn)
-        if size < SHARD_BUDGET_BYTES:
+        eff_budget = effective_migration_budget_bytes(conn)
+        if size < eff_budget:
             active_target, active_conn, active_env_key = name, conn, env_key
             log(f"   Aktivni cilovy shard: '{name}' ({size/1024/1024:.1f} MB / "
-                f"{SHARD_BUDGET_BYTES/1024/1024:.0f} MB rozpoctu).")
+                f"{eff_budget/1024/1024:.0f} MB efektivniho rozpoctu, "
+                f"vc. rezervy na budouci embedding).")
             break
         else:
-            log(f"   [{name}] je jiz naplneny ({size/1024/1024:.1f} MB) - "
+            log(f"   [{name}] je jiz naplneny ({size/1024/1024:.1f} MB / "
+                f"{eff_budget/1024/1024:.0f} MB efekt. rozpoctu) - "
                 f"prechazim na dalsi cilovy shard v seznamu.")
             conn.close()
 
@@ -506,9 +536,11 @@ def main():
 
                 active_conn = ensure_target_conn(active_conn, active_env_key)
                 cur_size = get_shard_size_bytes(active_conn)
-                if cur_size >= SHARD_BUDGET_BYTES:
-                    log(f"   Cilovy shard '{active_target}' dosahl rozpoctu "
-                        f"({cur_size/1024/1024:.0f} MB) - konci beh, zalozit dalsi shard.")
+                eff_budget = effective_migration_budget_bytes(active_conn)
+                if cur_size >= eff_budget:
+                    log(f"   Cilovy shard '{active_target}' dosahl efektivniho rozpoctu "
+                        f"({cur_size/1024/1024:.0f} MB / {eff_budget/1024/1024:.0f} MB, "
+                        f"vc. rezervy na budouci embedding) - konci beh, zalozit dalsi shard.")
                     src_conn.close()
                     active_conn.close()
                     log(f"CELKEM tento beh: {total_migrated_docs} dokumentu, "
