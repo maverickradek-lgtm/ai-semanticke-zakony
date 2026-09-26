@@ -115,6 +115,7 @@ SOURCE_SHARDS = [
 TARGET_SHARDS = [
     # (jmeno, env var s DB URL)
     ("reshard-01", "NEON_RESHARD_01_DB_URL"),  # delicate-brook-34508314
+    ("reshard-02", "NEON_RESHARD_02_DB_URL"),  # square-king-82196594
 ]
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -482,26 +483,41 @@ def main():
         f"{SHARD_SAFETY_MARGIN_BYTES/1024/1024:.0f} MB).")
 
     # Najdi prvni cilovy shard, ktery jeste ma volne misto.
+    # DULEZITE: already_migrated se musi sesbirat napric VSEMI nakonfigurovanymi
+    # cilovymi shardy (ne jen tim aktivnim), jinak by po naplneni reshard-01 a
+    # prepnuti na reshard-02 skript nevedel, ze dokumenty z do1997 uz nekde
+    # (v jinem shardu) zmigrovane jsou, a zbytecne/chybne by je migroval znovu -
+    # coz by take plytvalo mistem v novem shardu na misto, ktere ma byt
+    # rezervovano na dokonceni do1997 pred prechodem na 1998_2007/2008_2020.
     active_target = None
     active_conn = None
     active_env_key = None
+    already_migrated = set()
     for name, env_key in TARGET_SHARDS:
         if env_key not in os.environ:
             log(f"   [{name}] přeskočeno - env var {env_key} neni nastavena.")
             continue
         conn = connect_target(env_key)
+        shard_ids = ensure_migration_tracking(conn)
+        already_migrated |= shard_ids
         size = get_shard_size_bytes(conn)
         eff_budget = effective_migration_budget_bytes(conn)
-        if size < eff_budget:
+        if active_conn is None and size < eff_budget:
             active_target, active_conn, active_env_key = name, conn, env_key
             log(f"   Aktivni cilovy shard: '{name}' ({size/1024/1024:.1f} MB / "
                 f"{eff_budget/1024/1024:.0f} MB efektivniho rozpoctu, "
-                f"vc. rezervy na budouci embedding).")
-            break
-        else:
+                f"vc. rezervy na budouci embedding; obsahuje {len(shard_ids)} dok.).")
+        elif active_conn is None:
             log(f"   [{name}] je jiz naplneny ({size/1024/1024:.1f} MB / "
-                f"{eff_budget/1024/1024:.0f} MB efekt. rozpoctu) - "
+                f"{eff_budget/1024/1024:.0f} MB efekt. rozpoctu, "
+                f"obsahuje {len(shard_ids)} dok.) - "
                 f"prechazim na dalsi cilovy shard v seznamu.")
+            conn.close()
+        else:
+            # Uz mame aktivni shard, ale tenhle dalsi v poradi jeste projdeme
+            # jen kvuli sesbirani jeho already_migrated ID, pak zavrit.
+            log(f"   [{name}] neni aktivni (obsahuje {len(shard_ids)} dok., "
+                f"jeho ID zapocitany do already_migrated) - zavirám spojeni.")
             conn.close()
 
     if active_conn is None:
@@ -512,8 +528,9 @@ def main():
         log("souboru (+ odpovidajici GitHub secret s connection stringem).")
         return
 
-    already_migrated = ensure_migration_tracking(active_conn)
-    log(f"   V '{active_target}' uz je {len(already_migrated)} dokumentu.")
+    log(f"   Celkem uz zmigrovano napric vsemi cilovymi shardy: "
+        f"{len(already_migrated)} dokumentu (aktivni shard pro zapis: "
+        f"'{active_target}').")
 
     total_migrated_docs = 0
     total_migrated_chunks = 0
