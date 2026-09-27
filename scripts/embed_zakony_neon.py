@@ -90,10 +90,10 @@ SHARD_WEIGHTS_BASE = {
     "1998_2007": 2,
     "2008_2020": 3,
     "2021_dosud": 4,
-    # reshard-01 je jiz "plny" (migrace hotova, ceka jen na embedding) - dame
-    # mu vysokou prioritu, aby se co nejdriv realne overilo, ze se do rozpoctu
-    # vejde. reshard-02 jeste prubezne roste (migrace bezi soubezne).
-    "reshard-01": 4,
+    # Radek 2026-09-27: reshard-01 obsahuje nejstarsi predpisy (do1997) -
+    # stejne jako do1997 vyse dostava nejnizsi prioritu. reshard-02 pokryje
+    # dalsi (o neco novejsi) obdobi, proto o stupen vys.
+    "reshard-01": 1,
     "reshard-02": 2,
 }
 SHARD_WEIGHTS = {k: v for k, v in SHARD_WEIGHTS_BASE.items() if k in NEON_URLS}
