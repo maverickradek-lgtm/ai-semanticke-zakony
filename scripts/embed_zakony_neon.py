@@ -71,15 +71,32 @@ NEON_URLS = {
     "2021_dosud": os.environ["NEON_ZAKONY_2021_DOSUD_DB_URL"],
 }
 
+# Nove (cistene) reshard shardy - viz reshard_and_clean_zakony.py. Pridavaji se
+# sem postupne, jak Radek rucne zaklada dalsi (kazdy ma svuj GitHub secret) -
+# volitelne (.get, ne [...]), aby beh nespadl, kdyz dany secret jeste neni
+# nastaveny. VACUUM (viz vacuum_chunks() nize) se z opatrnosti spousti jen pro
+# tyto reshard-* shardy, ktere maji oproti starym 4 shardum mnohem tesnejsi
+# rozpocet (viz effective_migration_budget_bytes v reshard_and_clean_zakony.py).
+if os.environ.get("NEON_RESHARD_01_DB_URL"):
+    NEON_URLS["reshard-01"] = os.environ["NEON_RESHARD_01_DB_URL"]
+if os.environ.get("NEON_RESHARD_02_DB_URL"):
+    NEON_URLS["reshard-02"] = os.environ["NEON_RESHARD_02_DB_URL"]
+
 # Radek (2026-09-02): novejsi predpisy jsou prioritnejsi nez historie do roku 2000 -
 # vahy urcuji, kolikrat za "velke kolo" se dany shard zpracuje (viz build_round_schedule).
 # do1997 neni vyrazen uplne, jen zpomalen oproti ostatnim.
-SHARD_WEIGHTS = {
+SHARD_WEIGHTS_BASE = {
     "do1997": 1,
     "1998_2007": 2,
     "2008_2020": 3,
     "2021_dosud": 4,
+    # reshard-01 je jiz "plny" (migrace hotova, ceka jen na embedding) - dame
+    # mu vysokou prioritu, aby se co nejdriv realne overilo, ze se do rozpoctu
+    # vejde. reshard-02 jeste prubezne roste (migrace bezi soubezne).
+    "reshard-01": 4,
+    "reshard-02": 2,
 }
+SHARD_WEIGHTS = {k: v for k, v in SHARD_WEIGHTS_BASE.items() if k in NEON_URLS}
 
 START_TIME = time.time()
 
@@ -259,6 +276,28 @@ def ensure_conn(neon_conns, key):
     return conn
 
 
+def vacuum_chunks(conn, key):
+    """VACUUM (bez FULL - nezamyka tabulku, bezpecne bezi soubezne s embed
+    dotazy) po davce UPDATE prikazu uvolni mrtve radky zpet k opetovnemu
+    pouziti. Radek 2026-09-27: reshard-* shardy maji mnohem tesnejsi
+    rozpocet nez stare 4 shardy (viz effective_migration_budget_bytes v
+    reshard_and_clean_zakony.py), takze prubezne UPDATE embeddingy by bez
+    VACUUMu mohly docasne nafouknout velikost shardu vic, nez je nutne."""
+    old_autocommit = conn.autocommit
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("VACUUM chunks")
+        log(f"   [{key}] VACUUM chunks proveden.")
+    except Exception as e:
+        log(f"   [{key}] WARN VACUUM selhal (pokracuji dal): {e}")
+    finally:
+        try:
+            conn.autocommit = old_autocommit
+        except Exception:
+            pass
+
+
 def build_round_schedule():
     """Vraci poradi shardu pro jedno 'velke kolo' podle SHARD_WEIGHTS - shard s
     vahou 3 se v nem objevi 3x, shard s vahou 1 jen 1x. Tim dostavaji novejsi
@@ -270,7 +309,7 @@ def build_round_schedule():
 
 
 def main():
-    log("Zacinam embedding pending chunku ve 4 Neon shardech zakonu (round-robin)...")
+    log(f"Zacinam embedding pending chunku v {len(NEON_URLS)} Neon shardech zakonu (round-robin): " + ", ".join(NEON_URLS.keys()))
 
     if GEMINI_API_KEY_POOL:
         shard_names = list(NEON_URLS.keys())
@@ -351,6 +390,8 @@ def main():
                     pass
                 done = -1
             totals[key] += max(done, 0)
+            if done > 0 and key.startswith("reshard-"):
+                vacuum_chunks(conn, key)
             if done == 0:
                 zero_streak[key] += 1
                 # 0 muze byt i prechodny zaskyk (napr. cerstve otevrene spojeni) -
