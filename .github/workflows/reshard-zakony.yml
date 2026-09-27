@@ -54,6 +54,7 @@ jobs:
           NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
           NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
           NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
           DOCS_PER_BATCH: ${{ github.event.inputs.docs_per_batch || '25' }}
           TIME_BUDGET_SECONDS: ${{ github.event.inputs.time_budget_seconds || '3000' }}
         run: python scripts/reshard_and_clean_zakony.py
