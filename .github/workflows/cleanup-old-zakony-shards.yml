@@ -1,0 +1,63 @@
+name: Uklid starych zakony shardu (RUCNI SPUSTENI, DRY RUN vychozi)
+
+# Radek 2026-09-27: FAZE 2 uklidu - maze ze starych 4 shardu jen dokumenty,
+# ktere uz jsou v nekterem reshard-* shardu PLNE zaembedovane (viz
+# scripts/cleanup_old_zakony_shards.py pro presnou logiku a bezpecnostni
+# pojistku). ZAMERNE jen workflow_dispatch, ZADNY schedule, a VYCHOZI
+# hodnoty obou vstupu jsou bezpecne (dry_run=true, confirm_delete=no) -
+# aby nahodne kliknuti na "Run workflow" nikdy nic nesmazalo bez explicitni
+# dvojite volby obou prepinacu.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = jen spocitat a vypsat, nic nemazat (VYCHOZI, bezpecne)"
+        required: false
+        default: "true"
+      confirm_delete:
+        description: "yes = potvrzuji ostre mazani (funguje jen soucasne s dry_run=false)"
+        required: false
+        default: "no"
+
+concurrency:
+  group: cleanup-old-zakony-shardy-solo
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 30
+    steps:
+      - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
+        run: |
+          for i in $(seq 1 30); do
+            getent hosts github.com >/dev/null 2>&1 && echo "DNS OK" && break
+            echo "DNS zatim nedostupne, cekam 10s... ($i/30)"
+            sleep 10
+          done
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Uklidit stare shardy (faze 2)
+        env:
+          # Zdrojove (stare) shardy.
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          # Cilove (nove) reshard shardy.
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          CONFIRM_DELETE: ${{ github.event.inputs.confirm_delete || 'no' }}
+        run: python scripts/cleanup_old_zakony_shards.py
