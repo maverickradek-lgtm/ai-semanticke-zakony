@@ -45,6 +45,8 @@ jobs:
           NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
           NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
           NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
           BATCH_PER_SHARD: ${{ github.event.inputs.batch_per_shard || '20' }}
           GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }}"
           GEMINI_API_KEY_POOL_LABELS: "GEMINI_API_KEY_3,GEMINI_API_KEY_UOHS,GEMINI_API_KEY_NS,GEMINI_API_KEY_2"
