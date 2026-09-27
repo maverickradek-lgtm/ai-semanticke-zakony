@@ -139,7 +139,7 @@ SHARD_BUDGET_BYTES = SHARD_HARD_LIMIT_BYTES - SHARD_SAFETY_MARGIN_BYTES  # 462 M
 # odecitame od SHARD_BUDGET_BYTES projektovanou budouci velikost
 # (pocet chunku v shardu * ESTIMATED_EMBED_BYTES_PER_CHUNK) - viz
 # effective_migration_budget_bytes() nize.
-ESTIMATED_EMBED_BYTES_PER_CHUNK = 2300
+ESTIMATED_EMBED_BYTES_PER_CHUNK = 2800  # opraveno 2026-09-27: realny test ukazal ~2751 B/chunk (puvodne 2300)
 
 DOCS_PER_BATCH = int(os.environ.get("DOCS_PER_BATCH", "25"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
