@@ -64,12 +64,21 @@ BATCH_PER_SHARD = int(os.environ.get("BATCH_PER_SHARD", "20"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 MAX_CONSECUTIVE_429 = int(os.environ.get("MAX_CONSECUTIVE_429", "10"))
 
-NEON_URLS = {
-    "do1997": os.environ["NEON_ZAKONY_DO1997_DB_URL"],
-    "1998_2007": os.environ["NEON_ZAKONY_1998_2007_DB_URL"],
-    "2008_2020": os.environ["NEON_ZAKONY_2008_2020_DB_URL"],
-    "2021_dosud": os.environ["NEON_ZAKONY_2021_DOSUD_DB_URL"],
-}
+# Radek 2026-09-27: DOCASNE VYPNUTO embedovani stareho schematu (4 shardy
+# do1997/1998_2007/2008_2020/2021_dosud). Dane shardy uz obsahuji obrovsky
+# needembedovany zbytek (stovky tisic chunku) - misto abychom do nej dal
+# investovali Gemini kvotu, presouvame veskere embedovani na nove (cistene)
+# reshard-* shardy. Stare shardy se budou postupne MAZAT (nejdriv jejich
+# needembedovana cast, pozdeji i cast, jejiz embedding uz je hotovy v novem
+# reshard shardu) - viz planovany cleanup skript, jeste nenasazeny.
+# Puvodni radky (pro pripadny navrat) zachovany zakomentovane nize:
+# NEON_URLS = {
+#     "do1997": os.environ["NEON_ZAKONY_DO1997_DB_URL"],
+#     "1998_2007": os.environ["NEON_ZAKONY_1998_2007_DB_URL"],
+#     "2008_2020": os.environ["NEON_ZAKONY_2008_2020_DB_URL"],
+#     "2021_dosud": os.environ["NEON_ZAKONY_2021_DOSUD_DB_URL"],
+# }
+NEON_URLS = {}
 
 # Nove (cistene) reshard shardy - viz reshard_and_clean_zakony.py. Pridavaji se
 # sem postupne, jak Radek rucne zaklada dalsi (kazdy ma svuj GitHub secret) -
@@ -86,13 +95,16 @@ if os.environ.get("NEON_RESHARD_02_DB_URL"):
 # vahy urcuji, kolikrat za "velke kolo" se dany shard zpracuje (viz build_round_schedule).
 # do1997 neni vyrazen uplne, jen zpomalen oproti ostatnim.
 SHARD_WEIGHTS_BASE = {
-    "do1997": 1,
-    "1998_2007": 2,
-    "2008_2020": 3,
-    "2021_dosud": 4,
+    # Stare 4 shardy (do1997/1998_2007/2008_2020/2021_dosud) docasne vypnuty
+    # - viz komentar u NEON_URLS vyse. Vahy zachovany zakomentovane pro
+    # pripadny navrat k puvodnimu schematu:
+    # "do1997": 1,
+    # "1998_2007": 2,
+    # "2008_2020": 3,
+    # "2021_dosud": 4,
     # Radek 2026-09-27: reshard-01 obsahuje nejstarsi predpisy (do1997) -
-    # stejne jako do1997 vyse dostava nejnizsi prioritu. reshard-02 pokryje
-    # dalsi (o neco novejsi) obdobi, proto o stupen vys.
+    # dostava nejnizsi prioritu. reshard-02 pokryje dalsi (o neco novejsi)
+    # obdobi, proto o stupen vys.
     "reshard-01": 1,
     "reshard-02": 2,
 }
