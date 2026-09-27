@@ -116,6 +116,7 @@ TARGET_SHARDS = [
     # (jmeno, env var s DB URL)
     ("reshard-01", "NEON_RESHARD_01_DB_URL"),  # delicate-brook-34508314
     ("reshard-02", "NEON_RESHARD_02_DB_URL"),  # square-king-82196594
+    ("reshard-03", "NEON_RESHARD_03_DB_URL"),  # solitary-river-87084386
 ]
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
