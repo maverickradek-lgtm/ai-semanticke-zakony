@@ -90,12 +90,12 @@ def delete_documents(conn, doc_ids, really_delete):
     doc_ids = list(doc_ids)
     with conn.cursor() as cur:
         cur.execute(
-            "select count(*) from documents where id = any(%s)",
+            "select count(*) from documents where id = any(%s::uuid[])",
             (doc_ids,),
         )
         doc_count = cur.fetchone()[0]
         cur.execute(
-            "select count(*) from chunks where document_id = any(%s)",
+            "select count(*) from chunks where document_id = any(%s::uuid[])",
             (doc_ids,),
         )
         chunk_count = cur.fetchone()[0]
@@ -104,8 +104,8 @@ def delete_documents(conn, doc_ids, really_delete):
         return doc_count, chunk_count
 
     with conn.cursor() as cur:
-        cur.execute("delete from chunks where document_id = any(%s)", (doc_ids,))
-        cur.execute("delete from documents where id = any(%s)", (doc_ids,))
+        cur.execute("delete from chunks where document_id = any(%s::uuid[])", (doc_ids,))
+        cur.execute("delete from documents where id = any(%s::uuid[])", (doc_ids,))
     conn.commit()
     return doc_count, chunk_count
 
@@ -148,7 +148,7 @@ def main():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "select id from documents where id = any(%s)",
+                    "select id from documents where id = any(%s::uuid[])",
                     (list(fully_embedded_ids),),
                 )
                 matched_ids = [row[0] for row in cur.fetchall()]
