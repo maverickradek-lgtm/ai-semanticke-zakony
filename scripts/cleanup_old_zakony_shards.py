@@ -84,10 +84,28 @@ def get_fully_embedded_doc_ids(conn):
 def delete_documents(conn, doc_ids, really_delete):
     """Smaze dane dokumenty (a jejich chunky) ze stareho shardu. Vraci
     (pocet_dokumentu, pocet_chunku) - realne smazanych, nebo (jen pro info)
-    kolik by se smazalo v DRY_RUN rezimu."""
+    kolik by se smazalo v DRY_RUN rezimu.
+
+    BEZPECNOSTNI POJISTKA (Radek/oprava 2026-09-30): pokud je dokument
+    stale odkazovan jako superseded_by z jineho dokumentu, ktery SAM jeste
+    smazan neni (typicky proto, ze jeste neni migrovan/zaembedovan), NESMI
+    se smazat - jinak by to spadlo na cizim klici, nebo (kdyby omezeni
+    nebylo) by se ztratila historicka vazba retezce novelizaci. Takove
+    dokumenty se z davky proste vynechaji a pockaji na pristi beh."""
     if not doc_ids:
         return 0, 0
     doc_ids = list(doc_ids)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select distinct superseded_by from documents "
+            "where superseded_by = any(%s::uuid[]) and not (id = any(%s::uuid[]))",
+            (doc_ids, doc_ids),
+        )
+        still_referenced = {row[0] for row in cur.fetchall()}
+    if still_referenced:
+        doc_ids = [i for i in doc_ids if i not in still_referenced]
+    if not doc_ids:
+        return 0, 0
     with conn.cursor() as cur:
         cur.execute(
             "select count(*) from documents where id = any(%s::uuid[])",
