@@ -102,6 +102,12 @@ def delete_documents(conn, doc_ids, really_delete):
             (doc_ids, doc_ids),
         )
         still_referenced = {row[0] for row in cur.fetchall()}
+        cur.execute(
+            "select distinct explains_document_id from documents "
+            "where explains_document_id = any(%s::uuid[]) and not (id = any(%s::uuid[]))",
+            (doc_ids, doc_ids),
+        )
+        still_referenced |= {row[0] for row in cur.fetchall()}
     if still_referenced:
         doc_ids = [i for i in doc_ids if i not in still_referenced]
     if not doc_ids:
