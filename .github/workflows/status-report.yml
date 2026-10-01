@@ -1,0 +1,48 @@
+name: Pokrok - prehled stavu vsech shardu (RUCNI SPUSTENI)
+
+# Radek 2026-10-01: rychly, pouze-cteni prehled stavu vsech shardu (kolik
+# je zaembedovano, kolik ceka, kolik je pripraveno ke smazani) - tlacitko 8
+# v NAS_Sprava.ps1. Zadne UPDATE/DELETE, bezpecne spoustet kdykoliv.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: status-report-solo
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 15
+    steps:
+      - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
+        run: |
+          for i in $(seq 1 30); do
+            getent hosts github.com >/dev/null 2>&1 && echo "DNS OK" && break
+            echo "DNS zatim nedostupne, cekam 10s... ($i/30)"
+            sleep 10
+          done
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Zjistit pokrok ve vsech shardech
+        env:
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          NEON_RESHARD_05_DB_URL: ${{ secrets.NEON_RESHARD_05_DB_URL }}
+          NEON_RESHARD_06_DB_URL: ${{ secrets.NEON_RESHARD_06_DB_URL }}
+        run: python scripts/status_report.py
