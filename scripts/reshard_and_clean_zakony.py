@@ -405,6 +405,50 @@ def fetch_chunks_for_document(conn, document_id):
         return cur.fetchall()
 
 
+def fetch_source_documents_with_retry(conn, project_id, name, already_migrated_ids, limit, retries=3):
+    """Obal kolem fetch_source_documents() - stejny duvod jako u
+    write_document_and_chunks_with_retry (Radek 2026-10-01, beh
+    #36929729903): ensure_source_conn() dela jen health-check PRED
+    pouzitim ('select 1'), ale Neon dokaze spojeni zabit i v mezere mezi
+    timto health-checkem a skutecnym dotazem - takova chyba se jinak
+    propaguje jako fatalni OperationalError a zastavi cely beh, i kdyz
+    jde jen o prechodny vypadek. Cteni je READ-ONLY, takze opakovani je
+    vzdy bezpecne."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return conn, fetch_source_documents(conn, already_migrated_ids, limit)
+        except psycopg2.OperationalError as e:
+            last_err = e
+            log(f"   WARN cteni dokumentu ze zdroje '{name}' selhalo (pokus "
+                f"{attempt+1}/{retries}), obnovuji spojeni: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = connect_source(project_id, name)
+    raise last_err
+
+
+def fetch_chunks_for_document_with_retry(conn, project_id, name, document_id, retries=3):
+    """Stejny obal jako fetch_source_documents_with_retry, pro cteni chunku
+    jednoho dokumentu."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return conn, fetch_chunks_for_document(conn, document_id)
+        except psycopg2.OperationalError as e:
+            last_err = e
+            log(f"   WARN cteni chunku dokumentu {document_id} ze zdroje "
+                f"'{name}' selhalo (pokus {attempt+1}/{retries}), obnovuji spojeni: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = connect_source(project_id, name)
+    raise last_err
+
+
 # ---------------------------------------------------------------------------
 # Zapis do cile - vycisteny content + search_tsv, embedding NULL (doplni ho
 # az navazujici embedovaci beh - viz DULEZITE na zacatku souboru)
@@ -551,7 +595,8 @@ def main():
         try:
             while time_left() > 30:
                 src_conn = ensure_source_conn(src_conn, src_project_id, src_name)
-                docs = fetch_source_documents(src_conn, already_migrated, DOCS_PER_BATCH)
+                src_conn, docs = fetch_source_documents_with_retry(
+                    src_conn, src_project_id, src_name, already_migrated, DOCS_PER_BATCH)
                 if not docs:
                     break  # tenhle zdrojovy shard je (pro ted) hotovy
 
@@ -570,7 +615,8 @@ def main():
 
                 for doc in docs:
                     src_conn = ensure_source_conn(src_conn, src_project_id, src_name)
-                    chunks = fetch_chunks_for_document(src_conn, doc["id"])
+                    src_conn, chunks = fetch_chunks_for_document_with_retry(
+                        src_conn, src_project_id, src_name, doc["id"])
                     active_conn = write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunks)
                     already_migrated.add(doc["id"])
                     total_migrated_docs += 1
