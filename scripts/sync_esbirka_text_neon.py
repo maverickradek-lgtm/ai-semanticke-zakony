@@ -52,6 +52,7 @@ import psycopg2.extras
 
 import migrate_zakony_to_neon as neonlib
 import sync_esbirka_text as fetcher
+from priority_laws import PRIORITY_PREDPISY, SUPER_EMBED_PRIORITY
 
 # --- Reshard cile (Radek 2026-10-04) ---
 # Existujici predpisy se aktualizuji TAM, KDE UZ JSOU (reshard kopie ma
@@ -462,6 +463,11 @@ def main():
 
         try:
             document_id, reuse_map = upsert_law(conn, prev, citace, meta, version_iri, doc_url)
+            if (predpis_cislo, predpis_rok) in PRIORITY_PREDPISY:
+                # Radek 2026-10-04: aktualni zneni prioritnich predpisu (MF) se
+                # embedduje uplne jako prvni (viz priority_laws.py).
+                with conn.cursor() as cur:
+                    cur.execute("update documents set embed_priority = %s where id = %s", (SUPER_EMBED_PRIORITY, document_id))
             if prev is not None:
                 updated += 1
 
