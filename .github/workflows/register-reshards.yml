@@ -1,0 +1,55 @@
+name: Zaregistrovat reshardy do vyhledavani (RUCNI SPUSTENI)
+
+# Radek 2026-10-04: po pridani/zmene secretu NEON_RESHARD_NN_DB_URL tohle
+# zaregistruje connection stringy do Supabase Vaultu (odkud je cte
+# vyhledavani v aplikaci) a zajisti schema (match_chunks) v reshardech.
+# Idempotentni, bezpecne spoustet kdykoliv. Connection stringy se nevypisuji.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: register-shards-solo
+  cancel-in-progress: false
+
+jobs:
+  register:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 15
+    steps:
+      - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
+        run: |
+          for i in $(seq 1 30); do
+            getent hosts github.com >/dev/null 2>&1 && echo "DNS OK" && break
+            echo "DNS zatim nedostupne, cekam 10s... ($i/30)"
+            sleep 10
+          done
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Zaregistrovat reshardy
+        working-directory: scripts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          NEON_RESHARD_05_DB_URL: ${{ secrets.NEON_RESHARD_05_DB_URL }}
+          NEON_RESHARD_06_DB_URL: ${{ secrets.NEON_RESHARD_06_DB_URL }}
+          NEON_RESHARD_07_DB_URL: ${{ secrets.NEON_RESHARD_07_DB_URL }}
+          NEON_RESHARD_08_DB_URL: ${{ secrets.NEON_RESHARD_08_DB_URL }}
+          NEON_RESHARD_09_DB_URL: ${{ secrets.NEON_RESHARD_09_DB_URL }}
+        run: python register_shards_in_vault.py
