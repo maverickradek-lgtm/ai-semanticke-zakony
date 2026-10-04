@@ -147,7 +147,7 @@ def main():
     #    shardu", pokud je hotovy alespon v jednom novem shardu).
     fully_embedded_ids = set()
     for name, env_key in TARGET_SHARD_CANDIDATES:
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
             continue
         conn = db_connect(os.environ[env_key])
@@ -168,7 +168,7 @@ def main():
     grand_docs = 0
     grand_chunks = 0
     for name, env_key in SOURCE_SHARDS:
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
             continue
         conn = db_connect(os.environ[env_key])
