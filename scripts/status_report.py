@@ -78,7 +78,7 @@ def main():
     fully_embedded_ids = set()
     migrated_ids = set()
     for name, env_key in TARGET_SHARDS:
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
             continue
         conn = db_connect(os.environ[env_key])
@@ -107,7 +107,7 @@ def main():
     log(f"Celkem napric vsemi novymi shardy: {len(fully_embedded_ids)} unikatnich plne zaembedovanych dokumentu.")
 
     for name, env_key in SOURCE_SHARDS:
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
             continue
         conn = db_connect(os.environ[env_key])
