@@ -73,6 +73,7 @@ def main():
     log("=== POKROK - stav vsech shardu k tomuto okamziku ===")
 
     fully_embedded_ids = set()
+    migrated_ids = set()
     for name, env_key in TARGET_SHARDS:
         if env_key not in os.environ:
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
@@ -88,6 +89,9 @@ def main():
                 chunk_pending = cur.fetchone()[0]
             ids = get_fully_embedded_doc_ids(conn)
             fully_embedded_ids |= ids
+            with conn.cursor() as cur:
+                cur.execute("select id from documents")
+                migrated_ids |= {r[0] for r in cur.fetchall()}
             pct = (100.0 * (chunk_total - chunk_pending) / chunk_total) if chunk_total else 100.0
             log(
                 f"   [{name}] dokumentu celkem: {doc_total}, chunku celkem: {chunk_total}, "
@@ -108,8 +112,15 @@ def main():
             with conn.cursor() as cur:
                 cur.execute("select count(*) from documents")
                 doc_total = cur.fetchone()[0]
-                cur.execute("select count(*) from documents where has_pending_chunks")
-                doc_pending_reshard = cur.fetchone()[0]
+                if migrated_ids:
+                    cur.execute(
+                        "select count(*) from documents where id = any(%s::uuid[])",
+                        (list(migrated_ids),),
+                    )
+                    doc_migrated = cur.fetchone()[0]
+                else:
+                    doc_migrated = 0
+                doc_pending_reshard = doc_total - doc_migrated
                 if fully_embedded_ids:
                     cur.execute(
                         "select count(*) from documents where id = any(%s::uuid[])",
@@ -119,7 +130,7 @@ def main():
                 else:
                     doc_ready_cleanup = 0
             log(
-                f"   [{name}] dokumentu celkem: {doc_total}, jeste ceka na reshardovani: {doc_pending_reshard}, "
+                f"   [{name}] dokumentu celkem: {doc_total}, jeste NEzmigrovano: {doc_pending_reshard} (zmigrovano {doc_migrated}), "
                 f"pripraveno ke smazani (hotova kopie jinde): {doc_ready_cleanup}"
             )
         finally:
