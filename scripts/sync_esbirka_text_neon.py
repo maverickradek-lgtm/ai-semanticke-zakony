@@ -53,6 +53,44 @@ import psycopg2.extras
 import migrate_zakony_to_neon as neonlib
 import sync_esbirka_text as fetcher
 
+# --- Reshard cile (Radek 2026-10-04) ---
+# Existujici predpisy se aktualizuji TAM, KDE UZ JSOU (reshard kopie ma
+# prednost pred starym shardem). NOVE predpisy se zapisuji do reshardu (ne
+# podle roku do starych 4 shardu) - stare shardy se uz neembeduji a casem se
+# vyprazdni. Reshard shardy se pridavaji jen pokud je nastaven jejich secret.
+# NEW_DOCS_TARGET=old vrati puvodni chovani (podle roku do starych shardu).
+RESHARD_KEYS_ALL = [f"reshard-{n:02d}" for n in range(1, 10)]
+
+
+def _setup_reshards():
+    keys = []
+    for k in RESHARD_KEYS_ALL:
+        url = os.environ.get("NEON_" + k.upper().replace("-", "_") + "_DB_URL")
+        if url:
+            neonlib.NEON_URLS[k] = url
+            keys.append(k)
+    return keys
+
+
+RESHARD_KEYS = _setup_reshards()
+NEW_DOCS_TARGET = os.environ.get("NEW_DOCS_TARGET", "reshard").strip().lower()
+
+
+def pick_smallest_shard(neon_conns, keys):
+    """Vybere shard s nejmensi databazi (pg_database_size) - tam pujdou nove predpisy."""
+    best_key, best_size = None, None
+    for k in keys:
+        try:
+            with neon_conns[k].cursor() as cur:
+                cur.execute("select pg_database_size(current_database())")
+                size = cur.fetchone()[0]
+            log(f"   velikost {k}: {size / 1024 / 1024:.0f} MB")
+            if best_size is None or size < best_size:
+                best_key, best_size = k, size
+        except Exception as e:
+            log(f"   velikost {k} se nepodarilo zjistit: {e}")
+    return best_key
+
 # Stejne id jako radek v hlavni Supabase tabulce "sources" (code='esbirka',
 # viz `select id from sources where code='esbirka'`). Neon nema vlastni
 # "sources" tabulku - source_id se jen prenasi jako stabilni konstanta,
@@ -284,7 +322,7 @@ def main():
 
     neon_conns = {}
     for key in neonlib.NEON_URLS:
-        conn = psycopg2.connect(neonlib.NEON_URLS[key], connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
+        conn = neonlib.db_connect(neonlib.NEON_URLS[key])
         neonlib.ensure_schema(conn)
         neon_conns[key] = conn
         log(f"Schema pripraveno v Neon shardu: {key}")
@@ -307,6 +345,10 @@ def main():
             log(f"! {citace}: nenalezena aktualni verze, preskakuji")
 
     existing = get_existing_current(neon_conns)
+    new_docs_shard = None
+    if NEW_DOCS_TARGET == "reshard" and RESHARD_KEYS:
+        new_docs_shard = pick_smallest_shard(neon_conns, RESHARD_KEYS)
+    log(f"Nove predpisy pujdou do: {new_docs_shard or 'starych shardu podle roku'}")
     unchanged = 0
     for citace in list(version_iri_by_citace.keys()):
         prev = existing.get(citace)
@@ -365,15 +407,14 @@ def main():
 
         prev = existing.get(citace)
         predpis_cislo, predpis_rok = parse_predpis(citace)
-        target_shard = neonlib.bucket_for_year(predpis_rok)
-        if prev is not None and prev[2] != target_shard:
-            # Cislo/rok predpisu (citace) se v case nemeni - pokud uz
-            # existujici zaznam sedi v jinem shardu, nez by ted vysel z
-            # roku, jde o nesrovnalost (nemelo by nastat). Radeji zustat
-            # v puvodnim shardu, at nevznikne duplicitni zaznam ve dvou
-            # shardech soucasne.
-            log(f"! POZOR {citace}: existujici zaznam je v shardu {prev[2]}, rok {predpis_rok} by vysel na {target_shard} - ponechavam v {prev[2]}")
+        if prev is not None:
+            # Existujici zaznam se vzdy aktualizuje tam, kde uz je (aby
+            # nevznikl duplicitni zaznam ve dvou shardech soucasne).
             target_shard = prev[2]
+        elif new_docs_shard:
+            target_shard = new_docs_shard
+        else:
+            target_shard = neonlib.bucket_for_year(predpis_rok)
 
         if prev is None and predpis_rok is not None and 1945 <= predpis_rok <= 1950:
             # Radek (2026-09-02): agregovane poválečné vyhlášky/oznámení z let
