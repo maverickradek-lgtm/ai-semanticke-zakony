@@ -305,7 +305,11 @@ def import_new_documents(conn):
     imported = 0
     skipped = 0
     errors = 0
+    unavailable = 0
+    attempted = 0
     for url, idx_url in all_links.items():
+        if not url.lower().startswith(("http://", "https://")):
+            continue  # napr. mailto: - nikdy neni dokument (Radek 2026-10-04)
         external_id = urlparse(url).path.strip("/")
         if external_id in existing:
             skipped += 1
@@ -317,6 +321,7 @@ def import_new_documents(conn):
             log("Casovy rozpocet vycerpan, koncim cist (zbytek doplni dalsi beh).")
             break
         conn = ensure_conn(conn)
+        attempted += 1
         try:
             doc_id, n_chunks = upsert_document(conn, url, None)
             if doc_id:
@@ -324,14 +329,21 @@ def import_new_documents(conn):
                 existing.add(external_id)
                 log("  + " + url + " (" + str(n_chunks) + " chunku)")
             else:
-                errors += 1
-                _STATE["had_errors"] = True
+                # Stranku/PDF nelze stahnout nebo ma malo textu - to je u
+                # tohoto zdroje trvale a opakuje se kazdy den (Radek
+                # 2026-10-04: drive to davalo falesne cervene behy).
+                # Jde o varovani, ne o chybu; skutecna chyba je jen vyjimka
+                # nebo kdyz selze vetsina pokusu (viz nize).
+                unavailable += 1
         except Exception as e:
             log("  Chyba u " + url + ": " + str(e))
             errors += 1
             _STATE["had_errors"] = True
 
-    log("Import done: " + str(imported) + " new, skipped=" + str(skipped) + " errors=" + str(errors))
+    log("Import done: " + str(imported) + " new, skipped=" + str(skipped) + " errors=" + str(errors) + " unavailable=" + str(unavailable))
+    if attempted >= 5 and unavailable * 2 > attempted:
+        log("  VAROVANI: vetsina pokusu o stazeni selhala (" + str(unavailable) + "/" + str(attempted) + ") - zdroj je pravdepodobne nedostupny.")
+        _STATE["had_errors"] = True
     return conn
 
 
