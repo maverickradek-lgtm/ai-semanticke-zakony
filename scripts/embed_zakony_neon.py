@@ -99,6 +99,12 @@ if os.environ.get("NEON_RESHARD_05_DB_URL"):
     NEON_URLS["reshard-05"] = os.environ["NEON_RESHARD_05_DB_URL"]
 if os.environ.get("NEON_RESHARD_06_DB_URL"):
     NEON_URLS["reshard-06"] = os.environ["NEON_RESHARD_06_DB_URL"]
+if os.environ.get("NEON_RESHARD_07_DB_URL"):
+    NEON_URLS["reshard-07"] = os.environ["NEON_RESHARD_07_DB_URL"]
+if os.environ.get("NEON_RESHARD_08_DB_URL"):
+    NEON_URLS["reshard-08"] = os.environ["NEON_RESHARD_08_DB_URL"]
+if os.environ.get("NEON_RESHARD_09_DB_URL"):
+    NEON_URLS["reshard-09"] = os.environ["NEON_RESHARD_09_DB_URL"]
 
 # Radek (2026-09-02): novejsi predpisy jsou prioritnejsi nez historie do roku 2000 -
 # vahy urcuji, kolikrat za "velke kolo" se dany shard zpracuje (viz build_round_schedule).
@@ -120,6 +126,9 @@ SHARD_WEIGHTS_BASE = {
     "reshard-04": 4,
     "reshard-05": 5,
     "reshard-06": 6,
+    "reshard-07": 7,
+    "reshard-08": 8,
+    "reshard-09": 9,
 }
 SHARD_WEIGHTS = {k: v for k, v in SHARD_WEIGHTS_BASE.items() if k in NEON_URLS}
 
