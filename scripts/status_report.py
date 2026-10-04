@@ -112,6 +112,9 @@ def main():
             with conn.cursor() as cur:
                 cur.execute("select count(*) from documents")
                 doc_total = cur.fetchone()[0]
+                cur.execute("select count(*), count(*) filter (where embedding is not null) from chunks")
+                _ct, _ce = cur.fetchone()
+                log(f"   [{name}] STARY SHARD chunku celkem: {_ct}, z toho s embeddingem: {_ce}")
                 if migrated_ids:
                     cur.execute(
                         "select count(*) from documents where id = any(%s::uuid[])",
