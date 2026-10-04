@@ -29,13 +29,13 @@ def db_connect(url, timeout=15):
     docasny DNS vypadek (Temporary failure in name resolution), jednorazovy
     pokus bez retry pak shodi cely beh zbytecne."""
     last_err = None
-    for attempt in range(4):
+    for attempt in range(8):
         try:
             return psycopg2.connect(url, connect_timeout=timeout, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
-            print("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
-            time.sleep(3)
+            print("db_connect selhalo (pokus " + str(attempt + 1) + "/8): " + str(e), flush=True)
+            time.sleep(min(10 * (attempt + 1), 45))
     raise last_err
 
 import sys
@@ -173,7 +173,20 @@ def is_superseded(strong_text):
     return ("zrusen" in s) or ("nahrazen" in s)
 
 
-def list_year(series, year):
+def list_year(series, year, attempts=5):
+    """Opakuje pri docasnem vypadku DNS/site (ConnectionError/Timeout) s narustajici pauzou."""
+    for attempt in range(attempts):
+        try:
+            return _list_year_once(series, year)
+        except (requests.ConnectionError, requests.Timeout) as e:
+            if attempt == attempts - 1:
+                raise
+            wait = 15 * (attempt + 1)
+            print("WARN: list_year " + series + " " + str(year) + " pokus " + str(attempt + 1) + "/" + str(attempts) + " selhal (" + type(e).__name__ + "), cekam " + str(wait) + " s", flush=True)
+            time.sleep(wait)
+
+
+def _list_year_once(series, year):
     url = SERIES_CONFIG[series].format(year=year)
     resp = requests.get(url, headers=REQ_HEADERS, timeout=30)
     if resp.status_code == 404:
