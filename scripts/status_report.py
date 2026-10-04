@@ -46,13 +46,13 @@ def log(*a):
 
 def db_connect(url, timeout=15):
     last_err = None
-    for attempt in range(4):
+    for attempt in range(8):
         try:
             return psycopg2.connect(url, connect_timeout=timeout, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
-            log(f"db_connect selhalo (pokus {attempt + 1}/4): {e}")
-            time.sleep(3)
+            log(f"db_connect selhalo (pokus {attempt + 1}/8): {e}")
+            time.sleep(min(10 * (attempt + 1), 45))
     raise last_err
 
 
