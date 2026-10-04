@@ -302,12 +302,18 @@ def download_and_chunk(conn, doc_id, external_id, item):
         resp = SESSION.get(item["pdf_url"], headers=REQ_HEADERS, timeout=30)
         if resp.status_code != 200 or (resp.content[:4] != b"%PDF" and "pdf" not in resp.headers.get("Content-Type", "").lower()):
             log("SKIP (neni PDF): " + item["pdf_url"] + " status=" + str(resp.status_code))
-            _STATE["had_errors"] = True
+            # Radek 2026-10-04: soubor, ktery je trvale jiny nez PDF (napr. Word
+            # sablona, status 200), neni chyba behu - jen varovani. Skutecna
+            # chyba je az nedostupnost (status != 200).
+            if resp.status_code != 200:
+                _STATE["had_errors"] = True
             return 0
         body_text = extract_pdf_text(resp.content)
     except Exception as e:
         log("WARN: stahovani/extrakce selhala: " + item["pdf_url"] + " " + str(e))
-        _STATE["had_errors"] = True
+        # Sitova chyba = skutecna chyba; poskozene/necitelne PDF je trvale a opakuje se.
+        if isinstance(e, requests.RequestException):
+            _STATE["had_errors"] = True
         return 0
 
     if not body_text or len(body_text) < 20:
