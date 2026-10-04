@@ -284,7 +284,7 @@ def main():
 
     neon_conns = {}
     for key in neonlib.NEON_URLS:
-        conn = psycopg2.connect(neonlib.NEON_URLS[key], connect_timeout=15)
+        conn = psycopg2.connect(neonlib.NEON_URLS[key], connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         neonlib.ensure_schema(conn)
         neon_conns[key] = conn
         log(f"Schema pripraveno v Neon shardu: {key}")
