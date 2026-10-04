@@ -411,7 +411,7 @@ def main():
         ensure_schema(conn)
         conn = import_new_documents(conn)
         gemini_key = get_admin_gemini_key()
-        embed_pending(conn, gemini_key)
+        conn = embed_pending(conn, gemini_key)
     finally:
         conn.close()
     log("=== MMR metodiky sync (Neon): hotovo ===")
