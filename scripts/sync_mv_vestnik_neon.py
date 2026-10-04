@@ -369,7 +369,7 @@ def main():
         ensure_schema(conn)
         conn = import_new_documents(conn)
         gemini_key = get_admin_gemini_key()
-        conn = embed_pending(conn, gemini_key)
+        embed_pending(conn, gemini_key)
     finally:
         conn.close()
     log("=== MV Vestnik sync (Neon): hotovo ===")
