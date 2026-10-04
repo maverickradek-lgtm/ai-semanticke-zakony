@@ -400,9 +400,9 @@ def main():
     try:
         ensure_schema(conn)
         gemini_key = get_admin_gemini_key()
-        conn = embed_pending(conn, gemini_key)
+        embed_pending(conn, gemini_key)
         conn = sync_documents(conn)
-        conn = embed_pending(conn, gemini_key)
+        embed_pending(conn, gemini_key)
     finally:
         conn.close()
     log("=== MV metodiky pro obce sync (Neon): hotovo ===")
