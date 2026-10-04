@@ -36,6 +36,9 @@ TARGET_SHARDS = [
     ("reshard-04", "NEON_RESHARD_04_DB_URL"),
     ("reshard-05", "NEON_RESHARD_05_DB_URL"),
     ("reshard-06", "NEON_RESHARD_06_DB_URL"),
+    ("reshard-07", "NEON_RESHARD_07_DB_URL"),
+    ("reshard-08", "NEON_RESHARD_08_DB_URL"),
+    ("reshard-09", "NEON_RESHARD_09_DB_URL"),
 ]
 
 
