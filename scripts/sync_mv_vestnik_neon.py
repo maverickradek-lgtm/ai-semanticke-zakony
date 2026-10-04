@@ -293,19 +293,23 @@ def import_new_documents(conn):
                 if resp.status_code != 200 or (resp.content[:4] != b"%PDF" and "pdf" not in resp.headers.get("Content-Type", "").lower()):
                     log("SKIP (neni PDF): " + pdf_url + " status=" + str(resp.status_code))
                     errors += 1
-                    _STATE["had_errors"] = True
+                    # Radek 2026-10-04: status 200 s ne-PDF obsahem je trvaly stav
+                    # zdroje, ne chyba behu; nedostupnost (status != 200) ano.
+                    if resp.status_code != 200:
+                        _STATE["had_errors"] = True
                     continue
                 body_text = extract_pdf_text(resp.content)
             except Exception as e:
                 log("WARN: stahovani/extrakce selhala: " + pdf_url + " " + str(e))
                 errors += 1
-                _STATE["had_errors"] = True
+                # Sitova chyba = skutecna chyba; poskozene PDF (trvale) jen varovani.
+                if isinstance(e, requests.RequestException):
+                    _STATE["had_errors"] = True
                 continue
 
             if not body_text or len(body_text) < 20:
                 log("SKIP (malo textu): " + pdf_url)
                 errors += 1
-                _STATE["had_errors"] = True
                 continue
 
             title = item["title"]
