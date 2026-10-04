@@ -429,6 +429,7 @@ def fetch_source_documents_with_retry(conn, project_id, name, already_migrated_i
                 conn.close()
             except Exception:
                 pass
+            time.sleep(min(3 * (2 ** attempt), 60))
             conn = connect_source(project_id, name)
     raise last_err
 
@@ -448,6 +449,7 @@ def fetch_chunks_for_document_with_retry(conn, project_id, name, document_id, re
                 conn.close()
             except Exception:
                 pass
+            time.sleep(min(3 * (2 ** attempt), 60))
             conn = connect_source(project_id, name)
     raise last_err
 
