@@ -48,4 +48,12 @@ jobs:
           GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_NS }}"
           MAX_ITEMS: ${{ inputs.max_items || '300' }}
           TIME_BUDGET_SECONDS: "3000"
-        run: python scripts/sync_uohs_neon.py
+        # Radek 2026-10-04: prechodne DNS vypadky NASu (NameResolutionError)
+        # shodily beh hned na zacatku - sync je idempotentni, takze 3 pokusy.
+        run: |
+          for try in 1 2 3; do
+            python scripts/sync_uohs_neon.py && exit 0
+            echo "Pokus $try/3 selhal, zkusim znovu za 120 s..."
+            sleep 120
+          done
+          exit 1
