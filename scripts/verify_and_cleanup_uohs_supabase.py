@@ -30,7 +30,7 @@ def db_connect(url, timeout=15):
     last_err = None
     for attempt in range(4):
         try:
-            return psycopg2.connect(url, connect_timeout=timeout)
+            return psycopg2.connect(url, connect_timeout=timeout, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
             print("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e), flush=True)
