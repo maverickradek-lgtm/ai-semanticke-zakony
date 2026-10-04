@@ -39,4 +39,12 @@ jobs:
           MAX_NEW_DOCS_PER_RUN: ${{ github.event.inputs.max_new_docs || '40' }}
           TIME_BUDGET_SECONDS: "3000"
           START_YEAR: "1993"
-        run: python scripts/sync_fs_metodiky.py
+        # Radek 2026-10-04: DNS vypadky na NASu (financnisprava.gov.cz) shodily beh -
+        # sync je idempotentni, takze az 3 pokusy.
+        run: |
+          for try in 1 2 3; do
+            python scripts/sync_fs_metodiky.py && exit 0
+            echo "Pokus $try/3 selhal, zkusim znovu za 120 s..."
+            sleep 120
+          done
+          exit 1
