@@ -331,6 +331,10 @@ def fetch_source_documents(conn, already_migrated_ids, limit, max_probe=200000):
     nez se pozadovalo (opravdovy konec tabulky), nebo dokud se nedosahne
     max_probe (bezpecnostni strop proti nekonecne rostoucimu dotazu)."""
     probe = limit * 3
+    # Radek 2026-10-04: PRIORITNI predpisy (priority_laws.py) se migruji
+    # uplne jako prvni (aby se co nejdriv dostaly do reshardu a embeddingu),
+    # teprve pak chronologicky. Cisla jsou int z naseho seznamu - bezpecne v SQL.
+    priority_sql = ",".join(f"({int(c)},{int(r)})" for c, r in sorted(PRIORITY_PREDPISY))
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         while True:
             cur.execute(
@@ -339,7 +343,8 @@ def fetch_source_documents(conn, already_migrated_ids, limit, max_probe=200000):
                     decision_date, effective_date, url, status, content_hash,
                     valid_from, valid_until, is_current, predpis_cislo, predpis_rok
                 from documents
-                order by coalesce(valid_from, valid_until, '1900-01-01'::date) asc,
+                order by (case when (predpis_cislo, predpis_rok) in (""" + priority_sql + """) then 0 else 1 end) asc,
+                    coalesce(valid_from, valid_until, '1900-01-01'::date) asc,
                     valid_until asc nulls last, created_at asc
                 limit %s
                 """,
