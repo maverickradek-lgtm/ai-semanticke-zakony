@@ -120,6 +120,9 @@ TARGET_SHARDS = [
     ("reshard-04", "NEON_RESHARD_04_DB_URL"),  # aged-tooth-88280428
     ("reshard-05", "NEON_RESHARD_05_DB_URL"),  # plain-term-57390431
     ("reshard-06", "NEON_RESHARD_06_DB_URL"),  # orange-glitter-74021554
+    ("reshard-07", "NEON_RESHARD_07_DB_URL"),  # volitelne - az bude secret
+    ("reshard-08", "NEON_RESHARD_08_DB_URL"),  # volitelne - az bude secret
+    ("reshard-09", "NEON_RESHARD_09_DB_URL"),  # volitelne - az bude secret
 ]
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
