@@ -545,7 +545,7 @@ def main():
     active_env_key = None
     already_migrated = set()
     for name, env_key in TARGET_SHARDS:
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{name}] přeskočeno - env var {env_key} neni nastavena.")
             continue
         conn = connect_target(env_key)
@@ -590,7 +590,7 @@ def main():
         if time_left() <= 30:
             break
         env_key = f"NEON_ZAKONY_{src_name.upper()}_DB_URL"
-        if env_key not in os.environ:
+        if not os.environ.get(env_key):
             log(f"   [{src_name}] přeskočeno - env var {env_key} neni nastavena.")
             continue
 
