@@ -289,6 +289,9 @@ def ensure_schema(conn):
                 unique (document_id, chunk_index)
             );
 
+            alter table chunks add column if not exists search_tsv tsvector;
+            create index if not exists idx_chunks_search_tsv on chunks using gin (search_tsv);
+
             create index if not exists documents_doc_type_idx on documents(doc_type);
             create index if not exists documents_predpis_sort_idx on documents(predpis_rok, predpis_cislo);
             create index if not exists idx_documents_explains on documents(explains_document_id);
