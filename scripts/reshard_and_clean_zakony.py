@@ -408,7 +408,7 @@ def fetch_chunks_for_document(conn, document_id):
         return cur.fetchall()
 
 
-def fetch_source_documents_with_retry(conn, project_id, name, already_migrated_ids, limit, retries=3):
+def fetch_source_documents_with_retry(conn, project_id, name, already_migrated_ids, limit, retries=6):
     """Obal kolem fetch_source_documents() - stejny duvod jako u
     write_document_and_chunks_with_retry (Radek 2026-10-01, beh
     #36929729903): ensure_source_conn() dela jen health-check PRED
@@ -433,7 +433,7 @@ def fetch_source_documents_with_retry(conn, project_id, name, already_migrated_i
     raise last_err
 
 
-def fetch_chunks_for_document_with_retry(conn, project_id, name, document_id, retries=3):
+def fetch_chunks_for_document_with_retry(conn, project_id, name, document_id, retries=6):
     """Stejny obal jako fetch_source_documents_with_retry, pro cteni chunku
     jednoho dokumentu."""
     last_err = None
@@ -494,7 +494,7 @@ def write_document_and_chunks(target_conn, doc, chunks):
     target_conn.commit()
 
 
-def write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunks, retries=3):
+def write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunks, retries=8):
     """Obal kolem write_document_and_chunks() - REAGUJE na skutecnou chybu
     zapisu (ne jen preventivni health-check pred pouzitim), protoze se
     ukazalo (2026-09-26, beh #36264627836), ze Neon dokaze spojeni zabit
@@ -519,6 +519,9 @@ def write_document_and_chunks_with_retry(active_conn, active_env_key, doc, chunk
                 conn.close()
             except Exception:
                 pass
+            # Rostouci pauza (3,6,12,24,48,60... s): vypadek site/DNS na NASu
+            # trva casto minuty, 3 rychle pokusy za 6 s ho neprekonaji.
+            time.sleep(min(3 * (2 ** attempt), 60))
             conn = connect_target(active_env_key)
     raise last_err
 
