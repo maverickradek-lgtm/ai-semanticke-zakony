@@ -63,6 +63,10 @@ EMBED_DIM = 256
 BATCH_PER_SHARD = int(os.environ.get("BATCH_PER_SHARD", "20"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
 MAX_CONSECUTIVE_429 = int(os.environ.get("MAX_CONSECUTIVE_429", "5"))
+# Radek 2026-10-04: FAZE 0 - nejdriv zaembedovat AKTUALNI zneni prioritnich
+# predpisu (embed_priority >= SUPER_EMBED_PRIORITY, viz priority_laws.py)
+# napric VSEMI shardy, dokud tam neco zbyva - teprve pak bezne kolo podle vah.
+SUPER_EMBED_PRIORITY = int(os.environ.get("SUPER_EMBED_PRIORITY", "5000"))
 VACUUM_EVERY_N_BATCHES = int(os.environ.get("VACUUM_EVERY_N_BATCHES", "5"))
 
 # Radek 2026-09-27: DOCASNE VYPNUTO embedovani stareho schematu (4 shardy
@@ -252,16 +256,26 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
     return None
 
 
-def embed_shard_batch(conn, key_info, shard_key):
+def embed_shard_batch(conn, key_info, shard_key, min_priority=None):
     """Vezme az BATCH_PER_SHARD pending chunku z jednoho shardu a zembeduje je.
     Vraci pocet uspesne zembedovanych chunku (0 = shard nema nic pending).
     key_info je {"value": <raw klic>, "label": <stabilni nazev klice pro
     kvotovy system>}."""
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, content from get_pending_chunks_prioritized(%s)",
-            (BATCH_PER_SHARD,),
-        )
+        if min_priority is None:
+            cur.execute(
+                "select id, content from get_pending_chunks_prioritized(%s)",
+                (BATCH_PER_SHARD,),
+            )
+        else:
+            # FAZE 0: jen AKTUALNI zneni SUPER prioritnich predpisu
+            cur.execute(
+                "select c.id, c.content from chunks c join documents d on d.id = c.document_id "
+                "where c.embedding is null and d.skip_embedding = false and d.has_pending_chunks = true "
+                "and d.is_current = true and d.embed_priority >= %s "
+                "order by d.embed_priority desc, d.created_at asc limit %s",
+                (min_priority, BATCH_PER_SHARD),
+            )
         rows = cur.fetchall()
     if not rows:
         return 0
@@ -398,6 +412,28 @@ def main():
 
     round_schedule = build_round_schedule()
     batches_since_vacuum = {}
+
+    # FAZE 0 - super prioritni predpisy (aktualni zneni) pred vsim ostatnim.
+    for key in list(NEON_URLS.keys()):
+        while time_left() > 60:
+            try:
+                conn = ensure_conn(neon_conns, key)
+                done = embed_shard_batch(conn, shard_keys[key], key, min_priority=SUPER_EMBED_PRIORITY)
+            except RateLimitStop as e:
+                log(f"   [{key}] FAZE 0: STOP na klici '{shard_keys[key]['label']}': {e}")
+                break
+            except Exception as e:
+                log(f"   [{key}] FAZE 0: CHYBA: {e}")
+                try:
+                    neon_conns[key].rollback()
+                except Exception:
+                    pass
+                break
+            totals[key] += max(done, 0)
+            if done > 0:
+                log(f"   [{key}] FAZE 0: zaembedovano {done} chunku prioritnich predpisu")
+            if done <= 0:
+                break
 
     while time_left() > 30 and not all(exhausted.values()):
         round_num += 1
