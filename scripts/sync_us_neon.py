@@ -103,7 +103,7 @@ def db_connect():
     last_err = None
     for attempt in range(4):
         try:
-            return psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+            return psycopg2.connect(NEON_DB_URL, connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
             log(f"db_connect selhalo (pokus {attempt + 1}/4): {e}")
@@ -174,7 +174,7 @@ def get_uohs_soudni_prezkum_spzn_set():
     last_err = None
     for attempt in range(4):
         try:
-            conn = psycopg2.connect(NEON_UOHS_DB_URL, connect_timeout=15)
+            conn = psycopg2.connect(NEON_UOHS_DB_URL, connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
             break
         except Exception as e:
             last_err = e
