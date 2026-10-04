@@ -83,7 +83,7 @@ def db_connect():
     last_err = None
     for attempt in range(4):
         try:
-            return psycopg2.connect(NEON_DB_URL, connect_timeout=15)
+            return psycopg2.connect(NEON_DB_URL, connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
             log("db_connect selhalo (pokus " + str(attempt + 1) + "/4): " + str(e))
