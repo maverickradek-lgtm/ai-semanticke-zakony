@@ -41,4 +41,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL_UOHS }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_UOHS }}
           BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '5' }}
-        run: python scripts/sync_justice_vrchni.py
+        # Radek 2026-10-04: prechodne DNS vypadky NASu (NameResolutionError)
+        # shodily beh hned na zacatku - sync je idempotentni, takze 3 pokusy.
+        run: |
+          for try in 1 2 3; do
+            python scripts/sync_justice_vrchni.py && exit 0
+            echo "Pokus $try/3 selhal, zkusim znovu za 120 s..."
+            sleep 120
+          done
+          exit 1
