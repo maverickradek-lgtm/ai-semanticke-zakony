@@ -62,7 +62,8 @@ EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 256
 BATCH_PER_SHARD = int(os.environ.get("BATCH_PER_SHARD", "20"))
 TIME_BUDGET_SECONDS = int(os.environ.get("TIME_BUDGET_SECONDS", "3000"))
-MAX_CONSECUTIVE_429 = int(os.environ.get("MAX_CONSECUTIVE_429", "10"))
+MAX_CONSECUTIVE_429 = int(os.environ.get("MAX_CONSECUTIVE_429", "5"))
+VACUUM_EVERY_N_BATCHES = int(os.environ.get("VACUUM_EVERY_N_BATCHES", "5"))
 
 # Radek 2026-09-27: DOCASNE VYPNUTO embedovani stareho schematu (4 shardy
 # do1997/1998_2007/2008_2020/2021_dosud). Dane shardy uz obsahuji obrovsky
@@ -183,6 +184,7 @@ class QuotaCapped(RateLimitStop):
 
 
 _consecutive_429 = {}  # track_key (shard) -> pocet po sobe jdoucich 429 pro dany klic
+_logged_429 = set()  # labely klicu, u kterych uz byl vypsan detail 429 (diagnostika, 2026-10-04)
 
 
 def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default"):
@@ -197,6 +199,8 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
     last_status = None
     last_body = None
     for attempt in range(retries):
+        if time_left() <= 25:
+            raise RuntimeError("dosazen casovy rozpocet behu - volani Gemini se uz nezahajuje")
         try:
             resp = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent",
@@ -206,11 +210,14 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
                     "taskType": "RETRIEVAL_DOCUMENT",
                     "outputDimensionality": EMBED_DIM,
                 },
-                timeout=30,
+                timeout=(8, 25),
             )
             last_status = resp.status_code
             last_body = resp.text[:1500]
             if resp.status_code == 429:
+                if gemini_key_label not in _logged_429:
+                    _logged_429.add(gemini_key_label)
+                    log(f"   DIAG 429 klic '{gemini_key_label}': {last_body[:700].replace(chr(10), ' ')}")
                 gemini_quota.report_429(SUPABASE_URL, SERVICE_KEY, gemini_key_label)
                 n = _consecutive_429.get(track_key, 0) + 1
                 _consecutive_429[track_key] = n
@@ -231,7 +238,7 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
             if attempt == retries - 1:
                 log(f"   DEBUG embed_text: vyjimka po vycerpani pokusu (status={last_status}): {last_body}")
                 raise
-            time.sleep(3 * (attempt + 1))
+            time.sleep(min(3 * (attempt + 1), max(time_left() - 25, 0)))
     log(f"   DEBUG embed_text: vycerpany pocet pokusu bez vyjimky (posledni status={last_status}): {last_body}")
     return None
 
@@ -381,6 +388,7 @@ def main():
     round_num = 0
 
     round_schedule = build_round_schedule()
+    batches_since_vacuum = {}
 
     while time_left() > 30 and not all(exhausted.values()):
         round_num += 1
@@ -415,7 +423,10 @@ def main():
                 done = -1
             totals[key] += max(done, 0)
             if done > 0 and key.startswith("reshard-"):
-                vacuum_chunks(conn, key)
+                batches_since_vacuum[key] = batches_since_vacuum.get(key, 0) + 1
+                if batches_since_vacuum[key] >= VACUUM_EVERY_N_BATCHES:
+                    vacuum_chunks(conn, key)
+                    batches_since_vacuum[key] = 0
             if done == 0:
                 zero_streak[key] += 1
                 # 0 muze byt i prechodny zaskyk (napr. cerstve otevrene spojeni) -
@@ -429,6 +440,14 @@ def main():
         if round_num % 5 == 0:
             log(f"...kolo {round_num}: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
 
+    # Zaverecny VACUUM jen tam, kde zbyly nevacuumovane davky (Radek 2026-10-04:
+    # drive VACUUM po kazde davce - zhruba 25 % casu behu).
+    for key_, n_ in batches_since_vacuum.items():
+        if n_ > 0:
+            try:
+                vacuum_chunks(ensure_conn(neon_conns, key_), key_)
+            except Exception as e:
+                log(f"   [{key_}] WARN zaverecny VACUUM selhal: {e}")
     for conn in neon_conns.values():
         try:
             conn.close()
