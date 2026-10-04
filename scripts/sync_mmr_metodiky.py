@@ -32,7 +32,7 @@ def db_connect(url, timeout=15):
     last_err = None
     for attempt in range(4):
         try:
-            conn = psycopg2.connect(url, connect_timeout=timeout)
+            conn = psycopg2.connect(url, connect_timeout=timeout, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
             conn.autocommit = False
             return conn
         except Exception as e:
