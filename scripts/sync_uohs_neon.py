@@ -432,7 +432,7 @@ def main():
         conn = import_new_documents(conn)
         gemini_keys = get_gemini_keys()
         log("Pocet Gemini klicu v rotaci: " + str(len(gemini_keys)))
-        embed_pending(conn, gemini_keys)
+        conn = embed_pending(conn, gemini_keys)
     finally:
         conn.close()
     log("=== UOHS sync (Neon): hotovo ===")
