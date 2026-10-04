@@ -252,7 +252,7 @@ def connect_source(project_id_unused, name, retries=4):
     last_err = None
     for attempt in range(retries):
         try:
-            return psycopg2.connect(url, connect_timeout=15)
+            return psycopg2.connect(url, connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
             wait_s = 5 * (attempt + 1)
@@ -267,7 +267,7 @@ def connect_target(env_key, retries=4):
     last_err = None
     for attempt in range(retries):
         try:
-            return psycopg2.connect(url, connect_timeout=15)
+            return psycopg2.connect(url, connect_timeout=15, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
         except Exception as e:
             last_err = e
             wait_s = 5 * (attempt + 1)
