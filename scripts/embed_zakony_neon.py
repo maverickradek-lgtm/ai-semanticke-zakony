@@ -256,11 +256,36 @@ def embed_text(text, gemini_key, gemini_key_label, retries=3, track_key="default
     return None
 
 
+# Radek 2026-10-05: pojistka proti tvrdemu limitu Neonu (512 MB) - kazdy embedding
+# pridava ~2,3 KB (vektor + HNSW index). Nad touto hranici se shard uz neembedduje
+# (jinak by hrozilo zablokovani zapisu vcetne reshardu/sync). Reseni: presun casti
+# dokumentu do prazdnejsiho shardu (workflow rebalance-reshards.yml).
+SHARD_SIZE_GUARD_MB = int(os.environ.get("SHARD_SIZE_GUARD_MB", "480"))
+_size_warned = set()
+
+
+def _shard_too_big(conn, shard_key):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select pg_database_size(current_database())")
+            mb = cur.fetchone()[0] / 1024 / 1024
+    except Exception:
+        return False
+    if mb >= SHARD_SIZE_GUARD_MB:
+        if shard_key not in _size_warned:
+            _size_warned.add(shard_key)
+            log(f"   [{shard_key}] POZOR: velikost {mb:.0f} MB >= {SHARD_SIZE_GUARD_MB} MB - embedding tohoto shardu pozastaven (viz rebalance-reshards.yml)")
+        return True
+    return False
+
+
 def embed_shard_batch(conn, key_info, shard_key, min_priority=None):
     """Vezme az BATCH_PER_SHARD pending chunku z jednoho shardu a zembeduje je.
     Vraci pocet uspesne zembedovanych chunku (0 = shard nema nic pending).
     key_info je {"value": <raw klic>, "label": <stabilni nazev klice pro
     kvotovy system>}."""
+    if _shard_too_big(conn, shard_key):
+        return 0
     with conn.cursor() as cur:
         if min_priority is None:
             cur.execute(
