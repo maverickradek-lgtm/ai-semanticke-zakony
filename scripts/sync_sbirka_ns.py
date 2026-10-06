@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -36,7 +37,9 @@ SITEMAP_URLS = [
 ]
 
 SESSION = requests.Session()
-_adapter = HTTPAdapter(pool_connections=MAX_WORKERS * 2, pool_maxsize=MAX_WORKERS * 2)
+# NAS runner ma obcas docasny DNS vypadek - opakovat pokusy (upsert je idempotentni)
+_retry = Retry(total=None, connect=8, read=3, status=3, backoff_factor=4, status_forcelist=(502, 503, 504), allowed_methods=None)
+_adapter = HTTPAdapter(pool_connections=MAX_WORKERS * 2, pool_maxsize=MAX_WORKERS * 2, max_retries=_retry)
 SESSION.mount("https://", _adapter)
 SESSION.mount("http://", _adapter)
 _log_lock = Lock()
