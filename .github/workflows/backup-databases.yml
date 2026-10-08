@@ -2,6 +2,7 @@ name: Backup databazi na Google Disk
 
 # Jednou za ~14 dni (1. a 15. den v mesici, cron nema presne "kazdych 14 dni")
 # zaloha vsech pripojenych databazi (Supabase + Neon) na Google Disk.
+# Radek 2026-10-08: misto 4 starych zakony shardu se zalohuje 9 reshardu.
 # Drzi posledni 4 behy (cca 2 mesice zpetne), starsi automaticky maze skript.
 
 on:
@@ -12,7 +13,7 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -41,10 +42,15 @@ jobs:
           GDRIVE_OAUTH_REFRESH_TOKEN: ${{ secrets.GDRIVE_OAUTH_REFRESH_TOKEN }}
           SUPABASE_MAIN_DB_URL: ${{ secrets.SUPABASE_MAIN_DB_URL }}
           SUPABASE_JUDIKATURA_DB_URL: ${{ secrets.SUPABASE_JUDIKATURA_DB_URL }}
-          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
-          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
-          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
-          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          NEON_RESHARD_05_DB_URL: ${{ secrets.NEON_RESHARD_05_DB_URL }}
+          NEON_RESHARD_06_DB_URL: ${{ secrets.NEON_RESHARD_06_DB_URL }}
+          NEON_RESHARD_07_DB_URL: ${{ secrets.NEON_RESHARD_07_DB_URL }}
+          NEON_RESHARD_08_DB_URL: ${{ secrets.NEON_RESHARD_08_DB_URL }}
+          NEON_RESHARD_09_DB_URL: ${{ secrets.NEON_RESHARD_09_DB_URL }}
           NEON_CELNI_DB_URL: ${{ secrets.NEON_CELNI_DB_URL }}
           NEON_ERU_DB_URL: ${{ secrets.NEON_ERU_DB_URL }}
           NEON_FS_DB_URL: ${{ secrets.NEON_FS_DB_URL }}
