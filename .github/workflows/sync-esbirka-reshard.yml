@@ -1,0 +1,75 @@
+name: Sync e-Sbirka - text primo do reshardu
+
+# Radek 2026-10-08: nahrazuje sync-esbirka-text-neon (psal do 4 starych shardu).
+# Zapisuje rovnou do reshardu (ocisteny text + search_tsv). Embedding doplni
+# embed-zakony-neon. Bezi na GitHub-hosted runneru, nekoliduje s NAS.
+#
+# Jednorazove prvni nasazeni: spustit rucne s backfill=dry (jen pocty), pak
+# backfill=real (doplni version_iri v reshardech ze starych shardu).
+
+on:
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "none = jen sync, dry = jen nanecisto spocitat backfill, real = backfill + sync"
+        required: false
+        default: "none"
+  schedule:
+    - cron: "15 4 * * *"
+
+concurrency:
+  group: sync-esbirka-reshard-solo
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Backfill version_iri v reshardech (jednorazove)
+        if: ${{ inputs.backfill == 'dry' || inputs.backfill == 'real' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_ZAKONY_DO1997_DB_URL: ${{ secrets.NEON_ZAKONY_DO1997_DB_URL }}
+          NEON_ZAKONY_1998_2007_DB_URL: ${{ secrets.NEON_ZAKONY_1998_2007_DB_URL }}
+          NEON_ZAKONY_2008_2020_DB_URL: ${{ secrets.NEON_ZAKONY_2008_2020_DB_URL }}
+          NEON_ZAKONY_2021_DOSUD_DB_URL: ${{ secrets.NEON_ZAKONY_2021_DOSUD_DB_URL }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          NEON_RESHARD_05_DB_URL: ${{ secrets.NEON_RESHARD_05_DB_URL }}
+          NEON_RESHARD_06_DB_URL: ${{ secrets.NEON_RESHARD_06_DB_URL }}
+          NEON_RESHARD_07_DB_URL: ${{ secrets.NEON_RESHARD_07_DB_URL }}
+          NEON_RESHARD_08_DB_URL: ${{ secrets.NEON_RESHARD_08_DB_URL }}
+          NEON_RESHARD_09_DB_URL: ${{ secrets.NEON_RESHARD_09_DB_URL }}
+          DRY_RUN: ${{ inputs.backfill == 'real' && 'false' || 'true' }}
+        run: python scripts/backfill_version_iri_reshard.py
+
+      - name: Sync e-Sbirka (primo do reshardu)
+        if: ${{ inputs.backfill != 'dry' }}
+        env:
+          # sync_esbirka_text.py cte tyto dve promenne na urovni souboru
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEON_RESHARD_01_DB_URL: ${{ secrets.NEON_RESHARD_01_DB_URL }}
+          NEON_RESHARD_02_DB_URL: ${{ secrets.NEON_RESHARD_02_DB_URL }}
+          NEON_RESHARD_03_DB_URL: ${{ secrets.NEON_RESHARD_03_DB_URL }}
+          NEON_RESHARD_04_DB_URL: ${{ secrets.NEON_RESHARD_04_DB_URL }}
+          NEON_RESHARD_05_DB_URL: ${{ secrets.NEON_RESHARD_05_DB_URL }}
+          NEON_RESHARD_06_DB_URL: ${{ secrets.NEON_RESHARD_06_DB_URL }}
+          NEON_RESHARD_07_DB_URL: ${{ secrets.NEON_RESHARD_07_DB_URL }}
+          NEON_RESHARD_08_DB_URL: ${{ secrets.NEON_RESHARD_08_DB_URL }}
+          NEON_RESHARD_09_DB_URL: ${{ secrets.NEON_RESHARD_09_DB_URL }}
+          TIME_BUDGET_SECONDS: "12000"
+        run: python scripts/sync_esbirka_text_reshard.py
