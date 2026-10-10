@@ -276,6 +276,7 @@ def main():
     unchanged = 0
     for citace in list(version_iri_by_citace.keys()):
         prev = existing.get(citace)
+        if prev is None and 1945 <= (parse_predpis(citace)[1] or 0) <= 1950: version_iri_by_citace.pop(citace, None); continue
         if prev is not None and prev[1] == version_iri_by_citace[citace]:
             del version_iri_by_citace[citace]
             unchanged += 1
