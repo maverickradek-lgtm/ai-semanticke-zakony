@@ -1,0 +1,42 @@
+name: Sync Rozhodnicek (usneseni vlady a Snemovny)
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Roky oddelene carkou (prazdne = aktualni rok), napr. 2025"
+        required: false
+        default: "2025"
+      sources:
+        description: "Zdroje: vlada,ps"
+        required: false
+        default: "vlada,ps"
+      dry:
+        description: "Zkusebni beh bez zapisu do databaze (1 = ano)"
+        required: false
+        default: "1"
+  schedule:
+    - cron: "40 5 * * *"
+
+concurrency:
+  group: sync-rozhodnicek
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - name: Sync Rozhodnicek
+        env:
+          NEON_ROZHODNICEK_DB_URL: ${{ secrets.NEON_ROZHODNICEK_DB_URL }}
+          ROZHODNICEK_YEARS: ${{ github.event.inputs.years }}
+          ROZHODNICEK_SOURCES: ${{ github.event.inputs.sources }}
+          ROZHODNICEK_DRY: ${{ github.event.inputs.dry }}
+          TIME_BUDGET_SECONDS: "12000"
+        run: python scripts/sync_rozhodnicek.py
