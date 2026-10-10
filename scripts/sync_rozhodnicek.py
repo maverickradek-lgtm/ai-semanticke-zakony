@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import psycopg2
@@ -58,7 +59,7 @@ def get(url, binary=False, retries=4):
             if r.status_code == 404:
                 return None
             r.raise_for_status()
-            time.sleep(0.25)
+            time.sleep(0.1)
             return r.content if binary else r.text
         except Exception as e:  # noqa
             last = e
@@ -203,10 +204,21 @@ def ps_list(term):
             mc = re.match(r"č\.\s*(\d+)", a.get_text(strip=True))
             if not m or not mc:
                 continue
-            row = a.parent
-            raw = row.get_text(" ", strip=True) if row else a.get_text()
-            raw = re.sub(r"^č\.\s*\d+\s*", "", raw)
-            out.append((int(mc.group(1)), raw, ps_parse_date(raw), int(m.group(1))))
+            # text a datum jsou vedle odkazu: stoupame k rodicum, dokud neobsahuji prave 1 odkaz na usneseni a datum
+            raw, datum = "", None
+            node = a
+            for _ in range(5):
+                node = node.parent
+                if node is None:
+                    break
+                if len(node.find_all("a", href=re.compile(r"text2\.sqw\?idd="))) != 1:
+                    break
+                cand = node.get_text(" ", strip=True)
+                d = ps_parse_date(cand)
+                if d is not None:
+                    raw, datum = re.sub(r"^č\.\s*\d+\s*", "", cand), d
+                    break
+            out.append((int(mc.group(1)), raw, datum, int(m.group(1))))
         page += 1
     log("PS obdobi " + str(term) + ": nalezeno " + str(len(out)) + " usneseni, stran " + str(last))
     return out
@@ -324,13 +336,20 @@ def main():
     if "vlada" in sources:
         for year in years:
             log("== Vlada " + str(year))
+            todo = []
             for cislo, datum in vlada_resolutions(year):
-                if time_left() < 300:
-                    log("Dosazen casovy limit"); break
                 if have.get(("vlada", year, cislo, "")):
                     stats["beze_zmeny"] += 1
-                    continue
-                handle(vlada_fetch(year, cislo, datum))
+                else:
+                    todo.append((cislo, datum))
+            log("  k stazeni: " + str(len(todo)) + " usneseni")
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                for i in range(0, len(todo), 40):
+                    if time_left() < 300:
+                        log("Dosazen casovy limit"); break
+                    batch = todo[i:i + 40]
+                    for doc in ex.map(lambda t: vlada_fetch(year, t[0], t[1]), batch):
+                        handle(doc)
     if "ps" in sources:
         terms = [9, 10] if min(years) <= 2025 else [10]
         for term in terms:
