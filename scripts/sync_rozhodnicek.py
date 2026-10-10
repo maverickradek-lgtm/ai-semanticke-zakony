@@ -299,6 +299,10 @@ def main():
     log("Roky: " + str(years) + ", zdroje: " + str(sources) + (" (DRY)" if DRY else ""))
 
     def handle(doc):
+        stats["zpracovano"] = stats.get("zpracovano", 0) + 1
+        if stats["zpracovano"] % 50 == 0:
+            log("  ... zpracovano " + str(stats["zpracovano"]) + " (posledni: " + doc["organ"] + " "
+                + str(doc["cislo"]) + "/" + str(doc["rok"]) + "), " + str(int(time.time() - START)) + " s")
         if not doc["text_plny"] or len(doc["text_plny"]) < 40:
             stats["bez_textu"] += 1
             log("  ! bez textu: " + doc["organ"] + " " + str(doc["cislo"]) + "/" + str(doc["rok"]))
