@@ -3,7 +3,7 @@ name: Embed Rozhodnicek (vyznamove hledani)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 19 * * *"
+    - cron: "10 7 * * *"
 
 concurrency:
   group: embed-rozhodnicek
