@@ -305,7 +305,10 @@ def main():
         sys.exit(1)
     years = [int(x) for x in (os.environ.get("ROZHODNICEK_YEARS") or str(dt.date.today().year)).replace(" ", "").split(",") if x]
     sources = [x.strip() for x in (os.environ.get("ROZHODNICEK_SOURCES") or "vlada,ps").split(",")]
-    conn = psycopg2.connect(url) if url else None
+    def connect_db(u):
+        return psycopg2.connect(u, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
+
+    conn = connect_db(url) if url else None
     have = existing_keys(conn) if conn else {}
     stats = {"nove": 0, "aktualizovano": 0, "beze_zmeny": 0, "bez_textu": 0, "chyby": 0}
     log("Roky: " + str(years) + ", zdroje: " + str(sources) + (" (DRY)" if DRY else ""))
@@ -326,12 +329,30 @@ def main():
                 log("  ukazka: " + doc["organ"] + " " + str(doc["cislo"]) + "/" + str(doc["rok"]) + " | " + str(doc["nazev"])[:100]
                     + " | text " + str(len(doc["text_plny"])) + " zn.: " + doc["text_plny"][:160].replace("\n", " / "))
             return
-        try:
-            stats[save(conn, doc)] += 1
-        except Exception as e:  # noqa
-            stats["chyby"] += 1
-            conn.rollback()
-            log("  ! DB chyba " + doc["organ"] + " " + str(doc["cislo"]) + ": " + str(e))
+        nonlocal conn
+        for attempt in range(3):
+            try:
+                if conn is None or conn.closed:
+                    conn = connect_db(url)
+                stats[save(conn, doc)] += 1
+                return
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                log("  ! spojeni s DB spadlo, pripojuji znovu (" + str(attempt + 1) + "): " + str(e)[:80])
+                try:
+                    conn.close()
+                except Exception:  # noqa
+                    pass
+                conn = None
+                time.sleep(3)
+            except Exception as e:  # noqa
+                stats["chyby"] += 1
+                try:
+                    conn.rollback()
+                except Exception:  # noqa
+                    pass
+                log("  ! DB chyba " + doc["organ"] + " " + str(doc["cislo"]) + ": " + str(e))
+                return
+        stats["chyby"] += 1
 
     if "vlada" in sources:
         for year in years:
