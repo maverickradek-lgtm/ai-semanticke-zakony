@@ -324,6 +324,8 @@ body{background-color:#000;background-image:url('data:image/webp;base64,UklGRiAn
 </div>
 </div><!-- /admin-view -->
 
+<div id="rozhodnicek-view" class="hidden"></div>
+
 <div id="database-view" class="hidden">
 <div class="card">
 <h2>Přehled databáze <a class="link-btn" id="open-coverage-link" style="font-size:12px; font-weight:400;">ℹ️ O databázi (co pokrýváme)</a></h2>
@@ -619,6 +621,7 @@ actions.innerHTML = approved
 <button class="secondary small" id="btn-nav-dashboard">Chatrádce Alf</button>
            <button class="secondary small" id="btn-nav-guide">Návod</button>
 <button class="secondary small" id="btn-nav-database">Databáze</button>
+<button class="secondary small" id="btn-nav-rozhodnicek">Rozhodníček</button>
 <button class="secondary small" id="btn-nav-settings">Nastavení</button>
 ${isAdmin ? '<button class="secondary small" id="btn-nav-admin">Administrace</button>' : ''}
 <button class="secondary small" id="btn-logout-top">Odhlásit se (${session.user.email})</button>
@@ -631,6 +634,7 @@ $('btn-nav-dashboard').onclick = () => showView('dashboard');
 $('btn-nav-settings').onclick = () => showView('settings');
 if (isAdmin) $('btn-nav-admin').onclick = () => showView('admin');
 $('btn-nav-database').onclick = () => showView('database');
+$('btn-nav-rozhodnicek').onclick = () => showView('rozhodnicek');
 }
 } else {
 actions.innerHTML = '';
@@ -638,7 +642,7 @@ actions.innerHTML = '';
 }
 
 function showView(view) {
-hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view')); hide($('doc-review-section')); hide($('answer-card'));
+hide($('dashboard-view')); hide($('settings-view')); hide($('admin-view')); hide($('database-view')); hide($('rozhodnicek-view')); hide($('doc-review-section')); hide($('answer-card'));
 if (view === 'settings') {
 show($('settings-view'));
 loadPredpisRequests();
@@ -647,6 +651,9 @@ show($('admin-view'));
 loadAdminList();
 loadApprovedList();
 loadAdminPredpisRequests();
+} else if (view === 'rozhodnicek') {
+show($('rozhodnicek-view'));
+if (window.Rozhodnicek) window.Rozhodnicek.open(callFn);
 } else if (view === 'database') {
 show($('database-view'));
 loadDatabaseStats();
@@ -2106,4 +2113,5 @@ function getSelectedDocTypes() {
 }
 </script>
 
+<script src="rozhodnicek.js"></script>
 </body></html>
