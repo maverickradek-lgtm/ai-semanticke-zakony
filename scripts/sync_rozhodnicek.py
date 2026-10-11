@@ -372,7 +372,7 @@ def main():
                     for doc in ex.map(lambda t: vlada_fetch(year, t[0], t[1]), batch):
                         handle(doc)
     if "ps" in sources:
-        terms = [9, 10] if min(years) <= 2025 else [10]
+        terms = ([8] if min(years) <= 2021 else []) + ([9] if min(years) <= 2025 else []) + [10]
         for term in terms:
             log("== PS volebni obdobi " + str(term))
             todo = []
