@@ -354,15 +354,22 @@ def main():
         terms = [9, 10] if min(years) <= 2025 else [10]
         for term in terms:
             log("== PS volebni obdobi " + str(term))
+            todo = []
             for cislo, nazev_raw, datum, idd in ps_list(term):
                 if datum is None or datum.year not in years:
                     continue
-                if time_left() < 300:
-                    log("Dosazen casovy limit"); break
                 if have.get(("ps", datum.year, cislo, str(term))):
                     stats["beze_zmeny"] += 1
-                    continue
-                handle(ps_fetch(term, cislo, nazev_raw, datum, idd))
+                else:
+                    todo.append((cislo, nazev_raw, datum, idd))
+            log("  k stazeni: " + str(len(todo)) + " usneseni")
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                for i in range(0, len(todo), 40):
+                    if time_left() < 300:
+                        log("Dosazen casovy limit"); break
+                    batch = todo[i:i + 40]
+                    for doc in ex.map(lambda t: ps_fetch(term, t[0], t[1], t[2], t[3]), batch):
+                        handle(doc)
     log("=== Hotovo: " + str(stats) + " ===")
     if conn:
         conn.close()
