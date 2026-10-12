@@ -80,9 +80,9 @@
       state.years = Object.keys(ys).map(Number).sort(function (a, b) { return b - a; });
       fillYears(state.years);
       var t = j.totals || {};
-      el('rz-stats').textContent = 'V Rozhodníčku je ' + (t.docs || 0) + ' usnesení' +
+      el('rz-stats').textContent = 'V Rozhodníčku je zatím ' + (t.docs || 0) + ' usnesení' +
         (state.years.length ? ' z let ' + state.years[state.years.length - 1] + '–' + state.years[0] : '') +
-        '. Hledání podle významu pokrývá zatím ' + (t.chunks ? Math.round(100 * (t.embedded || 0) / t.chunks) : 0) + ' % textů.';
+        ' (starší roky se postupně doplňují). Hledání podle významu pokrývá zatím ' + (t.chunks ? Math.round(100 * (t.embedded || 0) / t.chunks) : 0) + ' % textů.';
     }).catch(function (e) { el('rz-stats').textContent = 'Nepodařilo se načíst přehled: ' + (e && e.message || e); });
   }
 
