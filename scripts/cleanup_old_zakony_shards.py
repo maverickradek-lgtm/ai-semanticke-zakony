@@ -188,13 +188,13 @@ def main():
             with conn.cursor() as cur:
                 allids = list(fully_embedded_ids | set(new_stats.keys()))
                 cand = []
-                for i in range(0, len(allids), 1000):
-                    cur.execute("select id from documents where id = any(%s::uuid[])", (allids[i:i + 1000],))
+                for i in range(0, len(allids), 300):
+                    cur.execute("select id from documents where id = any(%s::uuid[])", (allids[i:i + 300],))
                     cand += [row[0] for row in cur.fetchall()]
             # smazat, pokud je reshard kopie kompletni: stejny/vyssi pocet chunku A zadny embedding se neztrati
             old_stats = {}
-            for i in range(0, len(cand), 1000):
-                old_stats.update(get_doc_stats(conn, cand[i:i + 1000]))
+            for i in range(0, len(cand), 300):
+                old_stats.update(get_doc_stats(conn, cand[i:i + 300]))
             matched_ids = []
             for d in cand:
                 o = old_stats.get(d, (10**9, 0))
@@ -219,4 +219,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    for _attempt in range(8):
+        try:
+            main()
+            break
+        except psycopg2.OperationalError as e:
+            log(f"Pokus {_attempt + 1}/8 selhal ({str(e)[:80]}) - opakuji za 20 s (mazani je idempotentni)")
+            time.sleep(20)
+    else:
+        sys.exit(1)
