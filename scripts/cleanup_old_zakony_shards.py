@@ -84,6 +84,16 @@ def get_fully_embedded_doc_ids(conn):
         return {row[0] for row in cur.fetchall()}
 
 
+def get_doc_stats(conn, ids=None):
+    """{document_id: (pocet_chunku, pocet_zaembedovanych)}"""
+    with conn.cursor() as cur:
+        if ids is None:
+            cur.execute("select document_id, count(*), count(*) filter (where embedding is not null) from chunks group by document_id")
+        else:
+            cur.execute("select document_id, count(*), count(*) filter (where embedding is not null) from chunks where document_id = any(%s::uuid[]) group by document_id", (list(ids),))
+        return {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+
+
 def delete_documents(conn, doc_ids, really_delete):
     """Smaze dane dokumenty (a jejich chunky) ze stareho shardu. Vraci
     (pocet_dokumentu, pocet_chunku) - realne smazanych, nebo (jen pro info)
@@ -146,6 +156,7 @@ def main():
     #    novymi shardy (union - dokument je "bezpecny ke smazani ze stareho
     #    shardu", pokud je hotovy alespon v jednom novem shardu).
     fully_embedded_ids = set()
+    new_stats = {}  # kopie v reshardech: id -> (chunku, zaembedovanych)
     for name, env_key in TARGET_SHARD_CANDIDATES:
         if not os.environ.get(env_key):
             log(f"   [{name}] preskoceno - env var {env_key} neni nastavena.")
@@ -155,6 +166,7 @@ def main():
             ids = get_fully_embedded_doc_ids(conn)
             log(f"   [{name}] {len(ids)} plne zaembedovanych dokumentu.")
             fully_embedded_ids |= ids
+            new_stats.update(get_doc_stats(conn))
         finally:
             conn.close()
 
@@ -176,9 +188,18 @@ def main():
             with conn.cursor() as cur:
                 cur.execute(
                     "select id from documents where id = any(%s::uuid[])",
-                    (list(fully_embedded_ids),),
+                    (list(fully_embedded_ids | set(new_stats.keys())),),
                 )
-                matched_ids = [row[0] for row in cur.fetchall()]
+                cand = [row[0] for row in cur.fetchall()]
+            # smazat, pokud je reshard kopie kompletni: stejny/vyssi pocet chunku A zadny embedding se neztrati
+            old_stats = get_doc_stats(conn, cand)
+            matched_ids = []
+            for d in cand:
+                o = old_stats.get(d, (10**9, 0))
+                n = new_stats.get(d, (0, 0))
+                if d in fully_embedded_ids or (n[0] >= o[0] and n[1] >= o[1]):
+                    matched_ids.append(d)
+            log(f"   [{name}] kandidatu s kopii v reshardech: {len(cand)}, bezpecne ke smazani: {len(matched_ids)}")
             doc_count, chunk_count = delete_documents(conn, matched_ids, REALLY_DELETE)
             verb = "smazano" if REALLY_DELETE else "by se smazalo (dry run)"
             log(f"   [{name}] {verb}: {doc_count} dokumentu, {chunk_count} chunku.")
