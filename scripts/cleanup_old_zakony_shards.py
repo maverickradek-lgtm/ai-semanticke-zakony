@@ -186,13 +186,15 @@ def main():
         conn = db_connect(os.environ[env_key])
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "select id from documents where id = any(%s::uuid[])",
-                    (list(fully_embedded_ids | set(new_stats.keys())),),
-                )
-                cand = [row[0] for row in cur.fetchall()]
+                allids = list(fully_embedded_ids | set(new_stats.keys()))
+                cand = []
+                for i in range(0, len(allids), 1000):
+                    cur.execute("select id from documents where id = any(%s::uuid[])", (allids[i:i + 1000],))
+                    cand += [row[0] for row in cur.fetchall()]
             # smazat, pokud je reshard kopie kompletni: stejny/vyssi pocet chunku A zadny embedding se neztrati
-            old_stats = get_doc_stats(conn, cand)
+            old_stats = {}
+            for i in range(0, len(cand), 1000):
+                old_stats.update(get_doc_stats(conn, cand[i:i + 1000]))
             matched_ids = []
             for d in cand:
                 o = old_stats.get(d, (10**9, 0))
@@ -200,7 +202,11 @@ def main():
                 if d in fully_embedded_ids or (n[0] >= o[0] and n[1] >= o[1]):
                     matched_ids.append(d)
             log(f"   [{name}] kandidatu s kopii v reshardech: {len(cand)}, bezpecne ke smazani: {len(matched_ids)}")
-            doc_count, chunk_count = delete_documents(conn, matched_ids, REALLY_DELETE)
+            doc_count, chunk_count = 0, 0
+            for i in range(0, len(matched_ids), 2000):
+                dc, cc = delete_documents(conn, matched_ids[i:i + 2000], REALLY_DELETE)
+                doc_count += dc
+                chunk_count += cc
             verb = "smazano" if REALLY_DELETE else "by se smazalo (dry run)"
             log(f"   [{name}] {verb}: {doc_count} dokumentu, {chunk_count} chunku.")
             grand_docs += doc_count
