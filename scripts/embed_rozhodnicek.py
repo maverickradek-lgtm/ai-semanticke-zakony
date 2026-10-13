@@ -96,7 +96,10 @@ def main():
     done = 0
     while time.time() - START < BUDGET:
         cur = conn.cursor()
-        cur.execute("select id, content from chunks where embedding is null order by id limit %s", (BATCH,))
+        # preskakuje neverejna usneseni bez textu (jen cislo a cj.) - neplytvat kvotou
+        cur.execute("select c.id, c.content from chunks c join documents d on d.id = c.document_id "
+                    "where c.embedding is null and length(coalesce(d.text_plny, '')) > 200 "
+                    "order by c.id limit %s", (BATCH,))
         rows = cur.fetchall()
         cur.close()
         if not rows:
@@ -117,7 +120,8 @@ def main():
             log("  ... embedovano %d (%d s)" % (done, int(time.time() - START)))
         time.sleep(0.5)
     cur = conn.cursor()
-    cur.execute("select count(*) filter (where embedding is null), count(*) from chunks")
+    cur.execute("select count(*) filter (where c.embedding is null and length(coalesce(d.text_plny, '')) > 200), count(*) "
+                "from chunks c join documents d on d.id = c.document_id")
     left, total = cur.fetchone()
     log("=== Hotovo: embedovano %d, zbyva %d z %d ===" % (done, left, total))
     conn.close()
