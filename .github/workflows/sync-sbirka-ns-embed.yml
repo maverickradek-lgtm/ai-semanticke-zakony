@@ -1,0 +1,34 @@
+name: Sync Sbirka NS - denni dobihani embeddingu (faze B)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: db-heavy-secondary
+  cancel-in-progress: false
+
+jobs:
+  embed_sbirka_ns:
+    runs-on: [self-hosted, nas]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --root-user-action=ignore -r scripts/requirements.txt
+
+      - name: Run embedding backfill (Sbirka NS + NSS)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_NS }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_NS }}
+          # vlastni vyhrazeny klic (samostatny Google projekt); limit 1000 RPD,
+          # rozpocet 900 necha rezervu pod stropem.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_NS }}
+          DAILY_EMBED_BUDGET: "900"
+        run: python scripts/sync_sbirka_ns_embed.py
