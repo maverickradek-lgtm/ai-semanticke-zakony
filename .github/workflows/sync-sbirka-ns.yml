@@ -20,8 +20,10 @@ concurrency:
 
 jobs:
   sync_sbirka_ns:
-    runs-on: [self-hosted, nas]
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    # 2026-10-15: sbirka.nsoud.cz vraci 503 IP adrese NASu, proto GitHub-hosted runner.
+    # Kratky timeout setri free minuty GitHub Actions.
+    timeout-minutes: 20
     steps:
       - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
         run: |
