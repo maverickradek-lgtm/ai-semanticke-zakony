@@ -51,17 +51,27 @@ def get_pending_chunks(limit):
     """Nacte chunky, ktere jeste nemaji embedding, serazene podle
     documents.embed_priority sestupne (dulezitejsi zdroje driv), pak
     podle stari zaznamu."""
-    r = SESSION.get(
-        f"{SUPABASE_URL}/rest/v1/chunks",
-        headers=sb_headers(),
-        params={
-            "select": "id,content",
-            "embedding": "is.null",
-            "order": "created_at.asc",
-            "limit": str(limit),
-        },
-        timeout=60,
-    )
+    r = None
+    for attempt in range(6):
+        try:
+            r = SESSION.get(
+                f"{SUPABASE_URL}/rest/v1/chunks",
+                headers=sb_headers(),
+                params={
+                    "select": "id,content",
+                    "embedding": "is.null",
+                    "order": "created_at.asc",
+                    "limit": str(limit),
+                },
+                timeout=60,
+            )
+            if r.status_code < 500:
+                break
+        except requests.RequestException as e:
+            log(f"  nacteni chunku selhalo ({e}), pokus {attempt + 1}/6")
+        time.sleep(3 * (attempt + 1))
+    if r is None:
+        raise RuntimeError("nacteni chunku selhalo")
     r.raise_for_status()
     return r.json()
 
@@ -124,17 +134,33 @@ def embed_text(text, max_retries=2):
     return None
 
 
-def save_embedding(chunk_id, values):
-    r = SESSION.patch(
-        f"{SUPABASE_URL}/rest/v1/chunks",
-        headers={**sb_headers(), "Prefer": "return=minimal"},
-        params={"id": f"eq.{chunk_id}"},
-        json={"embedding": values},
-        timeout=60,
-    )
-    if not r.ok:
-        log(f"  Supabase chyba pri ukladani {chunk_id}: {r.status_code} {r.text[:300]}")
-        r.raise_for_status()
+def save_embedding(chunk_id, values, max_retries=6):
+    """PATCH s opakovanim: Supabase obcas zavre spojeni (RemoteDisconnected) -
+    jedno spadle spojeni nesmi shodit cely beh (run #31, 2026-10-16)."""
+    last = None
+    for attempt in range(max_retries):
+        try:
+            r = SESSION.patch(
+                f"{SUPABASE_URL}/rest/v1/chunks",
+                headers={**sb_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{chunk_id}"},
+                json={"embedding": values},
+                timeout=60,
+            )
+            if r.status_code >= 500:
+                raise requests.RequestException(f"HTTP {r.status_code}")
+            if not r.ok:
+                log(f"  Supabase chyba pri ukladani {chunk_id}: {r.status_code} {r.text[:300]}")
+                r.raise_for_status()
+            return
+        except requests.exceptions.HTTPError:
+            raise
+        except requests.RequestException as e:
+            last = e
+            wait = 3 * (attempt + 1)
+            log(f"  ukladani {chunk_id} selhalo ({e}), pokus {attempt + 1}/{max_retries}, cekam {wait}s")
+            time.sleep(wait)
+    raise last
 
 
 def main():
