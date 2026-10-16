@@ -338,10 +338,15 @@ def import_new_documents(conn):
 
 def embed_pending(conn, gemini_key):
     embedded = 0
+    failed = []
+    consecutive_fail = 0
     while time_left() > 30:
         conn = ensure_conn(conn)
         with conn.cursor() as cur:
-            cur.execute("select id, content from chunks where embedding is null order by created_at asc limit 20")
+            cur.execute(
+                "select id, content from chunks where embedding is null and not (id = any(%s::uuid[])) order by created_at asc limit 20",
+                (failed,),
+            )
             rows = cur.fetchall()
         if not rows:
             break
@@ -352,16 +357,23 @@ def embed_pending(conn, gemini_key):
                 vec = embed_text(content, gemini_key)
             except Exception as e:
                 log("WARN: embed failed: " + str(chunk_id) + " " + str(e))
-                _STATE["had_errors"] = True
-                continue
+                vec = None
             if not vec:
+                # chunk uz dnes znovu nezkousime; po 3 neuspechech v rade
+                # (typicky vycerpana kvota 429) koncime misto 50min cekani
+                failed.append(str(chunk_id))
+                consecutive_fail += 1
                 continue
+            consecutive_fail = 0
             vec_str = "[" + ",".join("%.8f" % x for x in vec) + "]"
             conn = ensure_conn(conn)
             with conn.cursor() as cur2:
                 cur2.execute("update chunks set embedding = %s::vector where id = %s", (vec_str, chunk_id))
             conn.commit()
             embedded += 1
+        if consecutive_fail >= 3:
+            log("3x neuspech v rade (pravdepodobne vycerpana kvota Gemini), koncim embedding drive.")
+            break
     log("Embedding done: " + str(embedded) + " chunks")
     return conn
 
