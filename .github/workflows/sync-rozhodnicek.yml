@@ -18,8 +18,9 @@ on:
   schedule:
     # nova data: pondeli a ctvrtek (vlada zasedá obvykle ve stredu)
     - cron: "40 5 * * 1,4"
-    # dostahovani starsich let (kazdy den, hotove doklady se preskoci)
-    - cron: "10 18 * * *"
+    # ctvrtletni kontrola starsich let (1. ledna/dubna/cervence/rijna; hotove doklady se preskoci,
+    # zachyti pozdeji zverejnene texty). Pocatecni rok jde posunout zmenou cisla v "od:2018" nize.
+    - cron: "10 18 1 1,4,7,10 *"
 
 concurrency:
   group: sync-rozhodnicek
@@ -38,7 +39,7 @@ jobs:
       - name: Sync Rozhodnicek
         env:
           NEON_ROZHODNICEK_DB_URL: ${{ secrets.NEON_ROZHODNICEK_DB_URL }}
-          ROZHODNICEK_YEARS: ${{ github.event.inputs.years || (github.event.schedule == '10 18 * * *' && '2018,2019,2020,2021,2022,2023,2024,2025' || '') }}
+          ROZHODNICEK_YEARS: ${{ github.event.inputs.years || (github.event.schedule == '10 18 1 1,4,7,10 *' && 'od:2018' || '') }}
           ROZHODNICEK_SOURCES: ${{ github.event.inputs.sources }}
           ROZHODNICEK_DRY: ${{ github.event.inputs.dry }}
           TIME_BUDGET_SECONDS: "12000"
