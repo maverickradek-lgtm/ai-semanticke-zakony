@@ -303,7 +303,12 @@ def main():
     if not url and not DRY:
         log("Chybi NEON_ROZHODNICEK_DB_URL")
         sys.exit(1)
-    years = [int(x) for x in (os.environ.get("ROZHODNICEK_YEARS") or str(dt.date.today().year)).replace(" ", "").split(",") if x]
+    years_raw = (os.environ.get("ROZHODNICEK_YEARS") or str(dt.date.today().year)).replace(" ", "")
+    if years_raw.startswith("od:"):
+        # "od:2018" = vsechny roky od 2018 do aktualniho (kvartalni kontrola; pocatecni rok jde posunout)
+        years = list(range(int(years_raw[3:]), dt.date.today().year + 1))
+    else:
+        years = [int(x) for x in years_raw.split(",") if x]
     sources = [x.strip() for x in (os.environ.get("ROZHODNICEK_SOURCES") or "vlada,ps").split(",")]
     def connect_db(u):
         return psycopg2.connect(u, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
