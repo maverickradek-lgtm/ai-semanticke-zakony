@@ -12,8 +12,10 @@ on:
         description: "Max. pocet dokumentu smazanych ze Supabase za jeden beh"
         required: false
         default: "500"
-  schedule:
-    - cron: "0 9 * * *"
+  # Denni cron vypnut 2026-10-19: Supabase documents je prazdna (nic k migraci).
+  # Obnovit jen kdyz se do Supabase zacnou zase zapisovat predpisy:
+  # schedule:
+  #   - cron: "0 9 * * *"
 
 concurrency:
   group: migrate-zakony-reshard
