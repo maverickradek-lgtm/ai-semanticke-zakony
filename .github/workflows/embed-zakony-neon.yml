@@ -30,16 +30,54 @@ jobs:
             sleep 10
           done
 
+      - name: Predbezna kontrola kvot Gemini klicu (kdyz jsou vsechny vycerpane, beh se ukonci)
+        id: quota
+        env:
+          GEMINI_KEYS: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
+        run: |
+          # Radek 2026-10-23: jedno lehke volani na kazdy klic. Kdyz VSECHNY vraci 429
+          # (vycerpana kvota), zbytek behu se preskoci - setrime cas NAS runneru.
+          # Chyba site/jiny kod nez 429 = klic povazujeme za pouzitelny (beh pokracuje).
+          probe_all() {
+            usable=0
+            for k in $(echo "$GEMINI_KEYS" | tr ',' ' '); do
+              [ -z "$k" ] && continue
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST \
+                -H "Content-Type: application/json" -H "x-goog-api-key: $k" \
+                -d '{"content":{"parts":[{"text":"test"}]},"outputDimensionality":256}' \
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent" || echo 000)
+              echo "  klic: HTTP $code"
+              if [ "$code" != "429" ]; then usable=$((usable+1)); fi
+            done
+          }
+          probe_all
+          if [ "$usable" -eq 0 ]; then
+            echo "Vsechny klice vraci 429 - zkousim znovu za 30 s (mozna jen minutovy limit)..."
+            sleep 30
+            probe_all
+          fi
+          if [ "$usable" -eq 0 ]; then
+            echo "Kvoty vsech Gemini klicu jsou vycerpane - beh koncim, nic se neembeduje."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Pouzitelnych klicu: $usable - pokracuji."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.quota.outputs.skip != 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.quota.outputs.skip != 'true'
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.quota.outputs.skip != 'true'
         run: pip install --root-user-action=ignore -r scripts/requirements.txt
 
       - name: Embed pending chunky (4 shardy)
+        if: steps.quota.outputs.skip != 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
