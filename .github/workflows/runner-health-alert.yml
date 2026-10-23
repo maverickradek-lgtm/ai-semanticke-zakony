@@ -1,0 +1,43 @@
+name: Hlidani NAS runneru (mail pri problemu)
+
+# 2026-10-23: kdyz NAS runner vypadne a ulohy se hromadi ve fronte, tenhle beh
+# (bezi na GitHub serveru, tedy nezavisle na NASu; repo je verejne = zdarma)
+# skonci chybou a GitHub posle e-mail o neuspesnem behu.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */3 * * *"
+
+permissions:
+  actions: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Zkontrolovat zasekle ulohy ve fronte
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX_QUEUE_HOURS: "4"
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, datetime as dt
+          url = "https://api.github.com/repos/%s/actions/runs?status=queued&per_page=100" % os.environ["GITHUB_REPOSITORY"]
+          req = urllib.request.Request(url, headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+          runs = json.load(urllib.request.urlopen(req, timeout=30))["workflow_runs"]
+          now = dt.datetime.now(dt.timezone.utc)
+          max_h = float(os.environ["MAX_QUEUE_HOURS"])
+          stuck = []
+          for r in runs:
+              created = dt.datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+              age_h = (now - created).total_seconds() / 3600
+              # starsi nez 72 h = osiřele zaznamy, ignorujeme
+              if max_h <= age_h <= 72:
+                  stuck.append("%s #%s ceka %.1f h" % (r["name"], r["run_number"], age_h))
+          print("Ve fronte: %d, zaseklych: %d" % (len(runs), len(stuck)))
+          for s in stuck:
+              print(" -", s)
+          if stuck:
+              raise SystemExit("NAS runner zrejme nebezi - ulohy cekaji ve fronte dele nez %.0f h." % max_h)
+          PY
