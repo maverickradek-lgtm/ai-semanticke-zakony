@@ -337,8 +337,57 @@ def insert_document(conn, item, chunks):
     return doc_id
 
 
+def embed_pending_chunks(conn, limit=300, max_consecutive_fail=5):
+    """Zpetne doplni embedding u chunku tohoto zdroje (source='soudni_prezkum'),
+    kterym se pri vlozeni nepodarilo ziskat vektor (DNS vypadek, 429...).
+    Bez tohoto kroku by takove chunky zustaly bez embeddingu navzdory tomu, ze
+    dokument uz je v databazi (existing_urls ho pak preskoci)."""
+    conn = ensure_conn(conn)
+    cur = conn.cursor()
+    cur.execute(
+        "select c.id, c.content from chunks c join documents d on d.id = c.document_id "
+        "where d.source = 'soudni_prezkum' and c.embedding is null "
+        "order by c.document_id, c.chunk_index limit %s",
+        (limit,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    if not rows:
+        log("Zpetne doplneni embeddingu: neni co doplnovat.")
+        return conn
+    log(f"Zpetne doplneni embeddingu: {len(rows)} chunku bez vektoru (limit {limit}).")
+    done = 0
+    fails = 0
+    for chunk_id, content in rows:
+        if time_left() < 300:
+            log("  zpetne doplneni: dochazi casovy rozpocet, zbytek priste.")
+            break
+        vec = embed_text(content)
+        if vec is None:
+            fails += 1
+            if fails >= max_consecutive_fail:
+                log(f"  zpetne doplneni: {fails}x po sobe neuspech (kvota/sit) - koncim, zbytek priste.")
+                break
+            continue
+        fails = 0
+        vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
+        try:
+            conn = ensure_conn(conn)
+            cur2 = conn.cursor()
+            cur2.execute("update chunks set embedding = %s::vector where id = %s", (vec_str, chunk_id))
+            cur2.close()
+            done += 1
+        except Exception as e:
+            log(f"  ! zpetny update embeddingu selhal pro chunk {chunk_id}: {e}")
+            _STATE["had_errors"] = True
+            conn = ensure_conn(conn)
+    log(f"Zpetne doplneno embeddingu: {done} chunku.")
+    return conn
+
+
 def main():
     conn = db_connect()
+    conn = embed_pending_chunks(conn)
     items = fetch_pdf_links()
     urls_to_check = [it["url"] for it in items]
     already, conn = existing_urls(conn, urls_to_check)
