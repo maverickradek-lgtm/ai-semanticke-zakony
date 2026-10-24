@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   sync_sbirka_nss:
-    runs-on: [self-hosted, nas]
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
