@@ -45,7 +45,7 @@ jobs:
           # zamerne vynechan - beha soubezne na GitHub-hosted runneru v
           # sync-esbirka-embed.yml (embed_uohs/embed_judikat), aby se
           # nezdvojnasobila zatez na stejny projekt/kvotu).
-          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_NS }}"
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
           MAX_ITEMS: ${{ inputs.max_items || '300' }}
           TIME_BUDGET_SECONDS: "3000"
         # Radek 2026-10-04: prechodne DNS vypadky NASu (NameResolutionError)
