@@ -114,6 +114,8 @@ def db_connect():
 def get_admin_gemini_key():
     if GEMINI_API_KEY_OVERRIDE:
         return GEMINI_API_KEY_OVERRIDE
+    if GEMINI_API_KEY_POOL:
+        return GEMINI_API_KEY_POOL[0]
     last_err = None
     for attempt in range(4):
         try:
@@ -212,13 +214,18 @@ def chunk_text(text, size=CHUNK_SIZE):
 
 
 def embed_texts(texts, api_key):
-    """Zavola Gemini embedding API pro seznam textu, vrati seznam vektoru."""
+    """Zavola Gemini embedding API pro seznam textu, vrati seznam vektoru.
+    Pri 429 (vycerpana kvota) prepne na dalsi klic ze sdileneho poolu."""
+    keys = [api_key] + [k for k in GEMINI_API_KEY_POOL if k != api_key]
+    cur = 0
     out = []
     for t in texts:
-        for attempt in range(4):
+        fails_in_row = 0
+        while True:
+            key = keys[cur % len(keys)]
             try:
                 resp = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent?key={api_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}:embedContent?key={key}",
                     json={
                         "model": f"models/{EMBED_MODEL}",
                         "content": {"parts": [{"text": t}]},
@@ -230,10 +237,12 @@ def embed_texts(texts, api_key):
                 out.append(resp.json()["embedding"]["values"])
                 break
             except Exception as e:
-                log(f"embed_texts selhalo (pokus {attempt + 1}/4): {e}")
+                fails_in_row += 1
+                log(f"embed_texts selhalo (klic {cur % len(keys) + 1}/{len(keys)}, pokus {fails_in_row}): {str(e)[:80]}")
+                cur += 1
+                if fails_in_row >= max(4, len(keys) * 2):
+                    raise RuntimeError("embed_texts: vycerpany vsechny pokusy")
                 time.sleep(3)
-        else:
-            raise RuntimeError("embed_texts: vycerpany vsechny pokusy")
     return out
 
 
