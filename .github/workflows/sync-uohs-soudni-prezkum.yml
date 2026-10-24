@@ -40,6 +40,6 @@ jobs:
         env:
           NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
           GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
           MAX_ITEMS: ${{ github.event.inputs.max_items || '150' }}
         run: python scripts/sync_uohs_soudni_prezkum_neon.py
