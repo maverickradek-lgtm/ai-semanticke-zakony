@@ -45,7 +45,7 @@ from io import BytesIO
 # F-10 (audit 2026-09-24): sdileny stav pro rozliseni "zdroj nema nic
 # noveho" od "behem behu doslo ke skutecne chybe" - druhy pripad ma za
 # nasledek nenulovy exit kod z main().
-_STATE = {"had_errors": False}
+_STATE = {"had_errors": False, "transient": 0}
 
 
 class HardTimeout(Exception):
@@ -140,7 +140,7 @@ def embed_text(text, retries=3):
             last_err = str(e)
             time.sleep(2)
     log(f"  ! embed failed after {retries} retries: {last_err}")
-    _STATE["had_errors"] = True
+    _STATE["transient"] += 1
     return None
 
 
@@ -214,7 +214,7 @@ def fetch_pdf_links():
         except Exception as e:
             log(f"! nepodarilo se nacist {list_url}: {e}")
             list_failures += 1
-            _STATE["had_errors"] = True
+            _STATE["transient"] += 1
             continue
         soup = BeautifulSoup(resp.text, "html.parser")
         for a in soup.find_all("a", href=True):
@@ -415,9 +415,16 @@ def main():
     log(f"\nHotovo. Zpracovano: {processed}, preskoceno (bez textu): {skipped_no_text}, chyba stazeni: {failed_fetch}.")
     conn.close()
 
-    if _STATE["had_errors"] or failed_fetch > 0:
-        log("=== SELHANI: behem behu doslo k alespon jedne skutecne chybe, viz log vyse ===")
+    if _STATE["had_errors"]:
+        log("=== SELHANI: behem behu doslo ke skutecne chybe (databaze/PDF), viz log vyse ===")
         sys.exit(1)
+    transient = failed_fetch + _STATE["transient"]
+    if transient > 0:
+        log(f"Prechodne chyby (sit/DNS/429): stazeni {failed_fetch}, embedding/seznam {_STATE['transient']}.")
+        if processed == 0:
+            log("=== SELHANI: nic se nepodarilo zpracovat a nastaly chyby site - viz log vyse ===")
+            sys.exit(1)
+        log("VAROVANI: cast polozek se kvuli prechodnym chybam nezpracovala - beh se pocita jako uspesny, zbytek se doplni dalsim behem.")
 
 
 if __name__ == "__main__":
