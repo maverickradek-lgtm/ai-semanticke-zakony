@@ -39,7 +39,7 @@ jobs:
       - name: Run UOOU sync (Neon)
         env:
           NEON_UOOU_DB_URL: ${{ secrets.NEON_UOOU_DB_URL }}
-          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_NS }}"
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
           MAX_ITEMS: ${{ inputs.max_items || '300' }}
           TIME_BUDGET_SECONDS: "3000"
         run: python scripts/sync_uoou_neon.py
