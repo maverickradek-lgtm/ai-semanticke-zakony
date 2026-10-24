@@ -62,8 +62,8 @@ jobs:
           NEON_US_DB_URL: ${{ secrets.NEON_US_DB_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
+          NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
         run: |
           python scripts/sync_us_neon.py --mode backfill \
             --year-from "${{ inputs.year_from }}" \
@@ -75,7 +75,7 @@ jobs:
           NEON_US_DB_URL: ${{ secrets.NEON_US_DB_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GEMINI_API_KEY_OVERRIDE: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_POOL: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
+          NEON_UOHS_DB_URL: ${{ secrets.NEON_UOHS_DB_URL }}
         run: |
           python scripts/sync_us_neon.py --mode incremental --days "${{ inputs.days }}"
