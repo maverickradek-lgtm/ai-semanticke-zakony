@@ -33,7 +33,7 @@ jobs:
       - name: Predbezna kontrola kvot Gemini klicu (kdyz jsou vsechny vycerpane, beh se ukonci)
         id: quota
         env:
-          GEMINI_KEYS: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
+          GEMINI_KEYS: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
         run: |
           # Radek 2026-10-23: jedno lehke volani na kazdy klic. Kdyz VSECHNY vraci 429
           # (vycerpana kvota), zbytek behu se preskoci - setrime cas NAS runneru.
@@ -95,8 +95,8 @@ jobs:
           NEON_RESHARD_08_DB_URL: ${{ secrets.NEON_RESHARD_08_DB_URL }}
           NEON_RESHARD_09_DB_URL: ${{ secrets.NEON_RESHARD_09_DB_URL }}
           BATCH_PER_SHARD: ${{ github.event.inputs.batch_per_shard || '20' }}
-          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }}"
-          GEMINI_API_KEY_POOL_LABELS: "GEMINI_API_KEY_3,GEMINI_API_KEY_UOHS,GEMINI_API_KEY_NS,GEMINI_API_KEY_2"
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_2 }}"
+          GEMINI_API_KEY_POOL_LABELS: "GEMINI_API_KEY_3,GEMINI_API_KEY_UOHS,GEMINI_API_KEY_2"
           GEMINI_API_KEY_BACKUP: "${{ secrets.GEMINI_API_KEY_4 }}"
           GEMINI_API_KEY_BACKUP_LABEL: "GEMINI_API_KEY_4"
           GEMINI_KEY_QUOTA_CAPS: '{"GEMINI_API_KEY_4": 0.6}'
