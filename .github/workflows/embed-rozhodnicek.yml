@@ -24,8 +24,8 @@ jobs:
           NEON_ROZHODNICEK_DB_URL: ${{ secrets.NEON_ROZHODNICEK_DB_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
-          GEMINI_API_KEY_POOL_LABELS: "GEMINI_API_KEY_3,GEMINI_API_KEY_UOHS,GEMINI_API_KEY_2,GEMINI_API_KEY_4"
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
+          GEMINI_API_KEY_POOL_LABELS: "GEMINI_API_KEY_3,GEMINI_API_KEY_UOHS,GEMINI_API_KEY_NS,GEMINI_API_KEY_2,GEMINI_API_KEY_4"
           CAP_FRACTION: "0.5"
           TIME_BUDGET_SECONDS: "10000"
         run: python scripts/embed_rozhodnicek.py
