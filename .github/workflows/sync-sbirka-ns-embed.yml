@@ -30,5 +30,6 @@ jobs:
           # vlastni vyhrazeny klic (samostatny Google projekt); limit 1000 RPD,
           # rozpocet 900 necha rezervu pod stropem.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_NS }}
+          GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
           DAILY_EMBED_BUDGET: "900"
         run: python scripts/sync_sbirka_ns_embed.py
