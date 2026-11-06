@@ -23,6 +23,23 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"].strip()
 
+# Sdileny pool klicu (stejny jako u ostatnich behu); pri 429 se prepne na dalsi klic.
+GEMINI_KEYS = [GEMINI_API_KEY] + [
+    k.strip() for k in os.environ.get("GEMINI_API_KEY_POOL", "").split(",")
+    if k.strip() and k.strip() != GEMINI_API_KEY
+]
+_KEY_IDX = [0]
+MAX_TRIES = max(2, len(GEMINI_KEYS) + 1)
+
+
+def _current_key():
+    return GEMINI_KEYS[_KEY_IDX[0] % len(GEMINI_KEYS)]
+
+
+def _rotate_key():
+    _KEY_IDX[0] += 1
+
+
 EMBED_DIM = int(os.environ.get("EMBED_DIM", "256"))
 DAILY_EMBED_BUDGET = int(os.environ.get("DAILY_EMBED_BUDGET", "2500"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "50"))
@@ -97,18 +114,19 @@ def embed_text(text, max_retries=2):
         "outputDimensionality": EMBED_DIM,
         "taskType": "RETRIEVAL_DOCUMENT",
     }
-    for attempt in range(max_retries):
+    for attempt in range(MAX_TRIES):
         try:
             r = SESSION.post(
                 GEMINI_URL,
-                headers={"x-goog-api-key": GEMINI_API_KEY},
+                headers={"x-goog-api-key": _current_key()},
                 json=payload,
                 timeout=60,
             )
             if r.status_code == 429:
-                if attempt < max_retries - 1:
-                    log("  429 rate limit, kratka pauza 5s a jeste jeden pokus...")
-                    time.sleep(5)
+                if attempt < MAX_TRIES - 1:
+                    log(f"  429 na klici {_KEY_IDX[0] % len(GEMINI_KEYS) + 1}/{len(GEMINI_KEYS)}, prepinam na dalsi klic z poolu...")
+                    _rotate_key()
+                    time.sleep(2)
                     continue
                 # druhy 429 v rade - temer jiste vycerpana denni kvota uctu,
                 # ne jen prechodny RPM limit. Vzdavame se cele ulohy pro dnesek.
