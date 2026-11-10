@@ -64,6 +64,12 @@ def sb_headers():
     }
 
 
+# Zdroje, ktere tento beh embeduje (carkou oddelena source_id). Vychozi = pouze
+# Sbirka Nejvyssiho soudu (NS). NSS je zamerne pozastaven; Vrchni soudy resi jiny beh.
+EMBED_SOURCE_IDS = os.environ.get(
+    "EMBED_SOURCE_IDS", "a9bbed0c-b2a1-4b40-9a40-7f3b781d4d7e").strip()
+
+
 def get_pending_chunks(limit):
     """Nacte chunky, ktere jeste nemaji embedding, serazene podle
     documents.embed_priority sestupne (dulezitejsi zdroje driv), pak
@@ -75,8 +81,9 @@ def get_pending_chunks(limit):
                 f"{SUPABASE_URL}/rest/v1/chunks",
                 headers=sb_headers(),
                 params={
-                    "select": "id,content",
+                    "select": "id,content,documents!inner(source_id)",
                     "embedding": "is.null",
+                    "documents.source_id": f"in.({EMBED_SOURCE_IDS})",
                     "order": "created_at.asc",
                     "limit": str(limit),
                 },
