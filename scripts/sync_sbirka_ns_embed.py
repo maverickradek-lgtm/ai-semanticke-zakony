@@ -81,10 +81,10 @@ def get_pending_chunks(limit):
                 f"{SUPABASE_URL}/rest/v1/chunks",
                 headers=sb_headers(),
                 params={
-                    "select": "id,content,documents!inner(source_id)",
+                    "select": "id,content,documents!inner(source_id,decision_date)",
                     "embedding": "is.null",
                     "documents.source_id": f"in.({EMBED_SOURCE_IDS})",
-                    "order": "created_at.desc",
+                    "order": "documents(decision_date).desc.nullslast,created_at.desc",
                     "limit": str(limit),
                 },
                 timeout=60,
