@@ -84,7 +84,7 @@ def get_pending_chunks(limit):
                     "select": "id,content,documents!inner(source_id)",
                     "embedding": "is.null",
                     "documents.source_id": f"in.({EMBED_SOURCE_IDS})",
-                    "order": "created_at.asc",
+                    "order": "created_at.desc",
                     "limit": str(limit),
                 },
                 timeout=60,
