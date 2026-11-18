@@ -12,7 +12,7 @@ on:
 
 jobs:
   sync:
-    runs-on: [self-hosted, nas]
+    runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - name: Cekat na DNS/sit (NAS runner muze mit vypadek)
