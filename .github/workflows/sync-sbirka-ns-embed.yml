@@ -32,4 +32,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_NS }}
           GEMINI_API_KEY_POOL: "${{ secrets.GEMINI_API_KEY_3 }},${{ secrets.GEMINI_API_KEY_UOHS }},${{ secrets.GEMINI_API_KEY_NS }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_4 }}"
           DAILY_EMBED_BUDGET: "900"
+          EMBED_SOURCE_IDS: "a9bbed0c-b2a1-4b40-9a40-7f3b781d4d7e,7bd5d0d4-39dd-495f-9e72-fde55f3c63e1"
         run: python scripts/sync_sbirka_ns_embed.py
