@@ -135,7 +135,7 @@ def prune_old_backups(service, keep_last_n: int) -> None:
             "and mimeType = 'application/vnd.google-apps.folder' "
             "and trashed = false"
         ),
-        fields="files(id, name, createdTime)",
+        fields="files(id, name, createdTime, ownedByMe)",
         orderBy="createdTime desc",
         pageSize=100,
     ).execute()
@@ -143,7 +143,7 @@ def prune_old_backups(service, keep_last_n: int) -> None:
     to_delete = folders[keep_last_n:]
     for f in to_delete:
         log(f"Mazu starou zalohu (retence {keep_last_n}): {f['name']}")
-        service.files().delete(fileId=f["id"]).execute()
+        service.files().delete(fileId=f["id"]).execute() if f.get("ownedByMe", True) else log("Preskakuji (jiny vlastnik): " + f["name"])
 
 
 def main() -> None:
