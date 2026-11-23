@@ -1,0 +1,40 @@
+name: Sync nalezy Ustavniho soudu (NALUS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "backfill nebo incremental"
+        default: "incremental"
+      year_from:
+        description: "backfill od roku"
+        default: "2010"
+      year_to:
+        description: "backfill do roku"
+        default: "2026"
+      days:
+        description: "incremental: pocet dni zpetne"
+        default: "3"
+  schedule:
+    - cron: "40 4 * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests psycopg2-binary
+      - name: Sync NALUS
+        env:
+          SUPABASE_JUDIKATURA_DB_URL: ${{ secrets.SUPABASE_JUDIKATURA_DB_URL }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then MODE="incremental"; fi
+          python scripts/sync_us_judikatura.py --mode "$MODE" \
+            --year-from "${{ github.event.inputs.year_from || '2010' }}" \
+            --year-to "${{ github.event.inputs.year_to || '2026' }}" \
+            --days "${{ github.event.inputs.days || '3' }}"
