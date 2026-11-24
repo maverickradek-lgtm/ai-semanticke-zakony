@@ -6,8 +6,8 @@
   var TRACKS = [
     { src: 'music/glass_sky_rising.mp3', title: 'Glass Sky Rising' }
   ];
-  var DEFAULT_VOLUME = 0.15; // decentni vychozi hlasitost (0-1)
-  var LS = 'paragralf_music';
+  var DEFAULT_VOLUME = 0.10; // decentni vychozi hlasitost (0-1)
+  var LS = 'paragralf_music_v2'; // zmena klice = vsem se znovu pouzije vychozi hlasitost
 
   function load() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
   function save() {
