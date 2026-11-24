@@ -4,7 +4,8 @@
    spusti pri prvni interakci uzivatele (kliknuti/klavesa). */
 (function () {
   var TRACKS = [
-    { src: 'music/glass_sky_rising.mp3', title: 'Glass Sky Rising' }
+    { src: 'music/glass_sky_rising.mp3', title: 'Glass Sky Rising' },
+    { src: 'music/dneska_nikam_neutikam.mp3', title: 'Dneska nikam neutikam' }
   ];
   var DEFAULT_VOLUME = 0.10; // decentni vychozi hlasitost (0-1)
   var LS = 'paragralf_music_v2'; // zmena klice = vsem se znovu pouzije vychozi hlasitost
