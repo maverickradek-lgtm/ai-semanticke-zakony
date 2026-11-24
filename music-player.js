@@ -22,7 +22,7 @@
 
   var audio = new Audio();
   audio.preload = 'none';
-  audio.volume = typeof st.volume === 'number' ? st.volume : DEFAULT_VOLUME;
+  audio.volume = DEFAULT_VOLUME; // hlasitost se NEpamatuje - pri kazde navsteve zacina na vychozi hodnote
   audio.addEventListener('ended', function () { go(1, true); });
   audio.addEventListener('play', refresh);
   audio.addEventListener('pause', refresh);
