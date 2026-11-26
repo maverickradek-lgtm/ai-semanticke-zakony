@@ -51,15 +51,16 @@
   // ---- panel ----
   var css = document.createElement('style');
   css.textContent =
-    '#pm-wrap{position:fixed;left:14px;bottom:14px;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}' +
-    '#pm-box{display:flex;align-items:center;gap:6px;background:var(--panel,#161f2c);border:1px solid var(--border,#2a3644);border-radius:999px;padding:5px 10px;box-shadow:0 4px 18px rgba(0,0,0,.45);color:var(--text,#e8edf3);}' +
+    '#pm-wrap{position:fixed;left:14px;bottom:14px;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--panel,#161f2c);border:1px solid var(--border,#2a3644);border-radius:20px;padding:6px 12px 8px;box-shadow:0 4px 18px rgba(0,0,0,.45);color:var(--text,#e8edf3);}' +
+    '#pm-wrap.pm-min{border-radius:999px;padding:5px 10px;}' +
+    '#pm-box{display:flex;align-items:center;gap:6px;}' +
     '#pm-box button{background:transparent;color:var(--text,#e8edf3);border:none;padding:0;min-height:0;width:28px;height:28px;border-radius:50%;font-size:14px;line-height:1;cursor:pointer;box-shadow:none;transform:none;}' +
     '#pm-box button:hover{background:var(--panel-2,#1d2836);transform:none;box-shadow:none;}' +
     '#pm-box button.pm-main{background:var(--accent,#4f8cff);color:#fff;}' +
     '#pm-title{font-size:12px;color:var(--muted,#93a2b3);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
     '#pm-vol{width:70px;accent-color:var(--accent,#4f8cff);margin:0;}' +
     '#pm-wrap.pm-min #pm-box > :not(.pm-keep){display:none;}' +
-    '#pm-prog{display:flex;align-items:center;gap:8px;margin-top:6px;background:var(--panel,#161f2c);border:1px solid var(--border,#2a3644);border-radius:999px;padding:5px 14px;box-shadow:0 4px 18px rgba(0,0,0,.45);font-size:11px;color:var(--muted,#93a2b3);font-variant-numeric:tabular-nums;}' +
+    '#pm-prog{display:flex;align-items:center;gap:8px;margin-top:4px;padding:0 4px;font-size:11px;color:var(--muted,#93a2b3);font-variant-numeric:tabular-nums;}' +
     '#pm-seek{flex:1;min-width:110px;margin:0;height:4px;accent-color:var(--accent,#4f8cff);cursor:pointer;}' +
     '#pm-wrap.pm-min #pm-prog{display:none;}' +
     '@media(max-width:520px){#pm-title{display:none;}#pm-vol{width:54px;}}';
