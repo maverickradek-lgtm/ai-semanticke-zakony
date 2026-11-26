@@ -5,7 +5,9 @@
 (function () {
   var TRACKS = [
     { src: 'music/glass_sky_rising.mp3', title: 'Glass Sky Rising' },
-    { src: 'music/dneska_nikam_neutikam.mp3', title: 'Dneska nikam neutikam' }
+    { src: 'music/dneska_nikam_neutikam.mp3', title: 'Dneska nikam neutikam' },
+    { src: 'music/rano_klepe_na_sklo.mp3', title: 'Ráno klepe na sklo' },
+    { src: 'music/samota_v_celofanu.mp3', title: 'Samota v celofánu' }
   ];
   var DEFAULT_VOLUME = 0.10; // decentni vychozi hlasitost (0-1)
   var LS = 'paragralf_music_v2'; // zmena klice = vsem se znovu pouzije vychozi hlasitost
