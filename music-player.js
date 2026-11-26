@@ -59,6 +59,9 @@
     '#pm-title{font-size:12px;color:var(--muted,#93a2b3);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
     '#pm-vol{width:70px;accent-color:var(--accent,#4f8cff);margin:0;}' +
     '#pm-wrap.pm-min #pm-box > :not(.pm-keep){display:none;}' +
+    '#pm-prog{display:flex;align-items:center;gap:8px;margin-top:6px;background:var(--panel,#161f2c);border:1px solid var(--border,#2a3644);border-radius:999px;padding:5px 14px;box-shadow:0 4px 18px rgba(0,0,0,.45);font-size:11px;color:var(--muted,#93a2b3);font-variant-numeric:tabular-nums;}' +
+    '#pm-seek{flex:1;min-width:110px;margin:0;height:4px;accent-color:var(--accent,#4f8cff);cursor:pointer;}' +
+    '#pm-wrap.pm-min #pm-prog{display:none;}' +
     '@media(max-width:520px){#pm-title{display:none;}#pm-vol{width:54px;}}';
   document.head.appendChild(css);
 
@@ -97,6 +100,33 @@
   bMin.className = 'pm-keep';
   box.appendChild(bMin); // presun na konec
 
+  // ---- ukazatel prubehu: uplynuly cas | posuvnik | zbyvajici cas ----
+  var prog = document.createElement('div');
+  prog.id = 'pm-prog';
+  var tCur = document.createElement('span');
+  var seek = document.createElement('input');
+  seek.type = 'range'; seek.id = 'pm-seek'; seek.min = 0; seek.max = 1000; seek.step = 1; seek.value = 0;
+  seek.title = 'Průběh skladby'; seek.setAttribute('aria-label', 'Průběh skladby');
+  var tRem = document.createElement('span');
+  prog.appendChild(tCur); prog.appendChild(seek); prog.appendChild(tRem);
+  wrap.appendChild(prog);
+  var dragging = false;
+  function fmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function updateProg() {
+    var d = audio.duration, c = audio.currentTime || 0;
+    if (!isFinite(d) || d <= 0) { tCur.textContent = '0:00'; tRem.textContent = '-:--'; if (!dragging) seek.value = 0; return; }
+    tCur.textContent = fmt(c);
+    tRem.textContent = '-' + fmt(d - c);
+    if (!dragging) seek.value = Math.round(c / d * 1000);
+  }
+  seek.addEventListener('pointerdown', function () { dragging = true; });
+  seek.addEventListener('pointerup', function () { dragging = false; updateProg(); });
+  seek.addEventListener('input', function () {
+    var d = audio.duration;
+    if (isFinite(d) && d > 0) { audio.currentTime = seek.value / 1000 * d; var c = audio.currentTime; tCur.textContent = fmt(c); tRem.textContent = '-' + fmt(d - c); }
+  });
+  ['timeupdate', 'loadedmetadata', 'durationchange', 'emptied', 'ended'].forEach(function (ev) { audio.addEventListener(ev, updateProg); });
+
   function refresh() {
     bPlay.textContent = audio.paused ? '▶' : '⏸';
     title.textContent = TRACKS[idx].title;
@@ -104,7 +134,7 @@
     if (TRACKS.length < 2) { bPrev.style.display = 'none'; bNext.style.display = 'none'; }
   }
 
-  function mount() { document.body.appendChild(wrap); refresh(); }
+  function mount() { document.body.appendChild(wrap); refresh(); updateProg(); }
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 
   // prvni interakce uzivatele -> spustit (pokud ji uzivatel drive nevypnul)
