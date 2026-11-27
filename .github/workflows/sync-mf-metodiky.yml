@@ -7,7 +7,8 @@ on:
         description: "Max. pocet novych dokumentu k importu v tomto behu"
         default: "40"
   schedule:
-    - cron: "0 4 1 * *"
+    # denne po obnoveni denniho limitu Gemini (pulnoc PT = 08:00 UTC): novinky + dopocet embeddingu
+    - cron: "30 8 * * *"
 
 jobs:
   sync:
