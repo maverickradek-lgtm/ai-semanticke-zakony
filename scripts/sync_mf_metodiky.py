@@ -97,6 +97,52 @@ FILE_OVERRIDES = {
         "pdf_url": "https://theiia.org/globalassets/site/standards/editable-versions/global-internal-audit-standards-czech.pdf",
     },
 }
+# Mezinarodni auditorske standardy (ISA) prijate Komorou auditoru CR - MF je
+# jen zminuje, jednotliva PDF jsou na kacr.cz (prehled:
+# https://www.kacr.cz/aktualni-auditorske-standardy). Kazdy standard = samostatny dokument.
+KACR_PAGE = "https://www.kacr.cz/aktualni-auditorske-standardy"
+_K = "https://www.kacr.cz/s-doc/1/"
+EXTRA_DOCS = [
+    ("kacr-isa-200", "ISA 200 – Obecné cíle nezávislého auditora a provádění auditu v souladu s mezinárodními auditorskými standardy", _K + "1000272/638766965211200000/ISA 200cz_12_2024.pdf"),
+    ("kacr-isa-210", "ISA 210 – Sjednávání podmínek auditních zakázek", _K + "1000273/638766965218600000/ISA 210cz_12_2024.pdf"),
+    ("kacr-isa-220r", "ISA 220 (revidovaný) – Řízení kvality auditu účetní závěrky", _K + "1000274/638766965243500000/ISA 220Rcz_12_2024.pdf"),
+    ("kacr-isa-230", "ISA 230 – Dokumentace auditu", _K + "1000275/638766965257600000/ISA 230cz_12_2024.pdf"),
+    ("kacr-isa-240", "ISA 240 – Postupy auditorů související s podvody při auditu účetní závěrky", _K + "1000276/638766965273033333/ISA 240cz_12_2024.pdf"),
+    ("kacr-isa-250r", "ISA 250 (revidovaný) – Přihlížení k právním předpisům při auditu účetní závěrky", _K + "1000277/638766965282133333/ISA 250Rcz_12_2024.pdf"),
+    ("kacr-isa-260r", "ISA 260 (revidovaný) – Předávání informací osobám pověřeným správou a řízením účetní jednotky", _K + "1000278/638766965293166667/ISA 260Rcz_PIE_12_2024.pdf"),
+    ("kacr-isa-265", "ISA 265 – Předávání informací o nedostatcích ve vnitřním kontrolním systému", _K + "1000279/638766965298333333/ISA 265cz_12_2024.pdf"),
+    ("kacr-isa-300", "ISA 300 – Plánování auditu účetní závěrky", _K + "1000280/638766965306766667/ISA 300cz_12_2024.pdf"),
+    ("kacr-isa-315r", "ISA 315 (revidovaný) – Identifikace a vyhodnocení rizik materiální nesprávnosti", _K + "1000281/638766965336700000/ISA 315Rcz_12_2024.pdf"),
+    ("kacr-isa-320", "ISA 320 – Materialita při plánování a provádění auditu", _K + "1000282/638766965341633333/ISA 320cz_12_2024.pdf"),
+    ("kacr-isa-330", "ISA 330 – Reakce auditora na vyhodnocená rizika", _K + "1000283/638941273188666667/ISA 330cz_12_2024.pdf"),
+    ("kacr-isa-402", "ISA 402 – Zvažované skutečnosti týkající se účetní jednotky využívající služeb servisní organizace", _K + "1000284/638766965379000000/ISA 402cz_12_2024.pdf"),
+    ("kacr-isa-450", "ISA 450 – Vyhodnocení nesprávností zjištěných během auditu", _K + "1000285/638766965388300000/ISA 450cz_12_2024.pdf"),
+    ("kacr-isa-500", "ISA 500 – Důkazní informace", _K + "1000286/638766965398933333/ISA 500cz_12_2024.pdf"),
+    ("kacr-isa-501", "ISA 501 – Důkazní informace – specifické aspekty vybraných položek", _K + "1000287/638766965409233333/ISA 501cz_12_2024.pdf"),
+    ("kacr-isa-505", "ISA 505 – Externí konfirmace", _K + "1000288/638766965423500000/ISA 505cz_12_2024.pdf"),
+    ("kacr-isa-510", "ISA 510 – První auditní zakázka – počáteční zůstatky", _K + "1000289/638766965432300000/ISA 510cz_12_2024.pdf"),
+    ("kacr-isa-520", "ISA 520 – Analytické postupy", _K + "1000290/638766965438566667/ISA 520cz_12_2024.pdf"),
+    ("kacr-isa-530", "ISA 530 – Výběr vzorků", _K + "1000291/638766965443666667/ISA 530cz_12_2024.pdf"),
+    ("kacr-isa-540r", "ISA 540 (revidovaný) – Audit účetních odhadů a souvisejících vysvětlujících a popisných informací", _K + "1000292/638766965461800000/ISA 540Rcz_12_2024.pdf"),
+    ("kacr-isa-550", "ISA 550 – Spřízněné strany", _K + "1000293/638766965475000000/ISA 550cz_12_2024.pdf"),
+    ("kacr-isa-560", "ISA 560 – Události po datu účetní závěrky", _K + "1000294/638766965483400000/ISA 560cz_12_2024.pdf"),
+    ("kacr-isa-570r", "ISA 570 (revidovaný) – Nepřetržité trvání podniku", _K + "1000295/638766965501033333/ISA 570Rcz_12_2024.pdf"),
+    ("kacr-isa-580", "ISA 580 – Písemná prohlášení", _K + "1000296/638766965509166667/ISA 580cz_12_2024.pdf"),
+    ("kacr-isa-600r", "ISA 600 (revidovaný) – Specifické aspekty auditů účetních závěrek skupiny", _K + "1000297/638766965531433333/ISA 600R_cz_12_2024.pdf"),
+    ("kacr-isa-610r", "ISA 610 (revidovaný) – Využití práce interních auditorů", _K + "1000298/638766965540900000/ISA 610Rcz_12_2024.pdf"),
+    ("kacr-isa-620", "ISA 620 – Využití práce auditorova experta", _K + "1000299/638766965550800000/ISA 620cz_12_2024.pdf"),
+    ("kacr-isa-700r", "ISA 700 (revidovaný) – Utvoření názoru na účetní závěrku a sestavení zprávy nezávislého auditora", _K + "1000300/638767636678700000/ISA 700Rcz_PIE_12_2024.pdf"),
+    ("kacr-isa-700r-ad", "Aplikační doložka KA ČR k ISA 700R – Požadavky právních předpisů na zprávu auditora (účinnost od 10. 11. 2026)", _K + "1000871/639305884371033333/AD k ISA 700_po Sněmu 2026_na web.pdf"),
+    ("kacr-isa-701", "ISA 701 – Informování o hlavních záležitostech auditu ve zprávě nezávislého auditora", _K + "1000301/638766965624933333/ISA 701cz_10_2024.pdf"),
+    ("kacr-isa-705r", "ISA 705 (revidovaný) – Modifikace výroku ve zprávě nezávislého auditora", _K + "1000302/638766965633500000/ISA 705Rcz_12_2024.pdf"),
+    ("kacr-isa-706r", "ISA 706 (revidovaný) – Odstavce zprávy nezávislého auditora obsahující zdůraznění skutečnosti a jiné skutečnosti", _K + "1000303/638766965642700000/ISA 706Rcz_12_2024.pdf"),
+    ("kacr-isa-710", "ISA 710 – Srovnávací informace – srovnávací údaje a srovnávací účetní závěrka", _K + "1000304/638766965647933333/ISA 710cz_IAS1_12_2024.pdf"),
+    ("kacr-isa-720r", "ISA 720 (revidovaný) – Povinnosti auditora týkající se ostatních informací", _K + "1000689/639168118460033333/ISA 720Rcz_06_2026_amend ISSA 5000.pdf"),
+    ("kacr-isa-720-ad", "Aplikační doložka KA ČR k ISA 720 (revidovanému) – účinnost od 12. 11. 2024", _K + "1000125/638688983567933333/AD ISA 720-final-opr.pdf"),
+    ("kacr-isa-800r", "ISA 800 (revidovaný) – Zvláštní aspekty – audity účetních závěrek sestavených v souladu s rámcem pro zvláštní účely", _K + "1000306/638766965681866667/ISA 800Rcz_12_2024.pdf"),
+    ("kacr-isa-805r", "ISA 805 (revidovaný) – Zvláštní aspekty – audity jednotlivých účetních výkazů a specifických prvků, účtů nebo položek", _K + "1000690/639168118464633333/ISA 805Rcz_06_2026_amend ISSA 5000.pdf"),
+    ("kacr-isa-810r", "ISA 810 (revidovaný) – Zakázky na vypracování zprávy o agregované účetní závěrce", _K + "1000308/638766965713366667/ISA 810Rcz_12_2024.pdf"),
+]
 BROWSER_HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 
 
@@ -519,6 +565,58 @@ def import_new_documents(conn):
     return new_count
 
 
+def import_extra_documents(conn):
+    """Import jednotlivych PDF z EXTRA_DOCS (ISA od Komory auditoru)."""
+    existing = fetch_existing_external_ids(conn)
+    new_count = 0
+    for slug, title, pdf_url in EXTRA_DOCS:
+        if slug in existing:
+            continue
+        if time_left() <= 0 or new_count >= MAX_NEW_DOCS_PER_RUN:
+            break
+        try:
+            r = requests.get(pdf_url, timeout=120, headers=BROWSER_HEADERS)
+            r.raise_for_status()
+            text = extract_pdf_text(r.content)
+        except BadSourceFile as e:
+            print(f"SKIP (neplatny soubor na zdroji): {title} -> {e}")
+            continue
+        except Exception as e:
+            print(f"WARN: EXTRA fetch/extract failed for {title}: {e}")
+            _STATE["had_errors"] = True
+            continue
+        if not text:
+            print(f"SKIP (empty text): {title}")
+            continue
+        chunk_texts = split_into_chunks(text)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into documents (source, series, external_id, title, url, pdf_url, published_date, is_current)
+                values (%s, %s, %s, %s, %s, %s, %s, true)
+                on conflict (source, external_id) do nothing
+                returning id;
+                """,
+                ("mf_chj", "isa_kacr", slug, title, KACR_PAGE, pdf_url, None),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.commit()
+                continue
+            for i, ctext in enumerate(chunk_texts):
+                heading = title if i == 0 else f"{title} (pokracovani {i + 1})"
+                cur.execute(
+                    "insert into chunks (document_id, chunk_index, heading, content) values (%s, %s, %s, %s);",
+                    (row[0], i, heading, ctext),
+                )
+        conn.commit()
+        existing.add(slug)
+        new_count += 1
+        print(f"IMPORTED (KA CR): {title} ({len(chunk_texts)} chunks)")
+    print(f"Import KA CR done: {new_count} new documents")
+    return new_count
+
+
 def ensure_conn(conn):
     if conn is not None and conn.closed == 0:
         try:
@@ -575,6 +673,7 @@ def main():
     try:
         ensure_schema(conn)
         import_new_documents(conn)
+        import_extra_documents(conn)
         gemini_key = get_admin_gemini_key()
         embed_pending(conn, gemini_key)
     finally:
