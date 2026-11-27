@@ -341,7 +341,21 @@ def extract_docx_text(docx_bytes):
 
 
 def split_into_chunks(text, max_chars=MAX_CHARS_PER_CHUNK):
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    paragraphs = []
+    for p in text.split("\n\n"):
+        p = p.strip()
+        # odstavec delsi nez limit (napr. PDF bez prazdnych radku) rozdelit
+        # po radcich a pripadne natvrdo na hranici mezery
+        while len(p) > max_chars:
+            cut = p.rfind("\n", 0, max_chars)
+            if cut < max_chars // 2:
+                cut = p.rfind(" ", 0, max_chars)
+            if cut < max_chars // 2:
+                cut = max_chars
+            paragraphs.append(p[:cut].strip())
+            p = p[cut:].strip()
+        if p:
+            paragraphs.append(p)
     chunks = []
     current = []
     current_len = 0
