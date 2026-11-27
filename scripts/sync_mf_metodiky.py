@@ -24,6 +24,11 @@ ostatnich sync skriptu) - skript preskakuje uz existujici zaznamy podle
 external_id (slug z URL), takze dalsi beh (mesicni cron) pokracuje tam, kde
 skoncil predchozi. Prvni beh projede zpetne az do START_YEAR (zaklad pro
 zpetne dohnani historie), dalsi mesicni behy uz jen doplni nove polozky.
+
+2026-11-27: odkaz na "PDF", ktery vraci HTML (ne PDF) nebo useknuty/poskozeny
+soubor uz neshodi cely beh (je to chyba zdroje, ne skriptu) - dokument se jen
+preskoci s varovanim a zkusi se znovu pri dalsim behu. Skutecne chyby
+(sit, HTTP, DB, embedding) nadale koncí nenulovym exit kodem.
 """
 
 import os
@@ -80,6 +85,10 @@ LIST_URL_TMPL = (
 DETAIL_RE = re.compile(r"/metodicke-materialy-chj/\d{4}/[a-z0-9-]+", re.I)
 
 START_TIME = time.time()
+
+
+class BadSourceFile(Exception):
+    """Soubor na zdroji neni platny PDF/DOCX (HTML stranka, useknuty soubor...)."""
 
 
 def time_left():
@@ -206,12 +215,12 @@ CZECH_MONTHS = {
 
 
 def _strip_diacritics(s):
-    table = str.maketrans("\u00e1\u010d\u010f\u00e9\u011b\u00ed\u0148\u00f3\u0159\u0161\u0165\u00fa\u016f\u00fd\u017e", "acdeeinorstuuyz")
+    table = str.maketrans("áčďéěíňóřšťúůýž", "acdeeinorstuuyz")
     return s.lower().translate(table)
 
 
 def parse_czech_date(text):
-    m = re.search("(\\d{1,2})\\.?\\s*(\\d{1,2}|[a-zA-Z\u00e1-\u017e\u00c1-\u017d]+)\\.?\\s*(\\d{4})", text)
+    m = re.search("(\\d{1,2})\\.?\\s*(\\d{1,2}|[a-zA-Zá-žÁ-Ž]+)\\.?\\s*(\\d{4})", text)
     if not m:
         return None
     day, month_raw, year = m.groups()
@@ -250,7 +259,7 @@ def fetch_detail(url, title=None):
             return None
         ident = None
         if title:
-            m = re.search("\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
+            m = re.search("č\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
             if m:
                 ident = f"{m.group(1)}/{m.group(2)}"
         if ident:
@@ -274,7 +283,7 @@ def fetch_detail(url, title=None):
     # supersession note, e.g. title says "puvodne stanovisko CHJ c. 5/2018"
     replaces_ident = None
     if title:
-        m2 = re.search("p[u\u016f]vodn[\u011be][^0-9]{0,40}\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
+        m2 = re.search("p[uů]vodn[ěe][^0-9]{0,40}č\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", title, re.I)
         if m2:
             replaces_ident = f"{m2.group(1)}/{m2.group(2)}"
     return {
@@ -286,11 +295,16 @@ def fetch_detail(url, title=None):
 
 
 def extract_pdf_text(pdf_bytes):
-    reader = PdfReader(BytesIO(pdf_bytes))
-    parts = []
-    for page in reader.pages:
-        t = page.extract_text() or ""
-        parts.append(t)
+    if not pdf_bytes.lstrip()[:5] == b"%PDF-":
+        raise BadSourceFile("odpoved neni PDF (zacina " + repr(pdf_bytes[:8]) + ")")
+    try:
+        reader = PdfReader(BytesIO(pdf_bytes))
+        parts = []
+        for page in reader.pages:
+            t = page.extract_text() or ""
+            parts.append(t)
+    except Exception as e:
+        raise BadSourceFile("PDF nelze precist: " + str(e))
     text = "\n".join(parts)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -298,13 +312,18 @@ def extract_pdf_text(pdf_bytes):
 
 
 def extract_docx_text(docx_bytes):
-    doc = Document(BytesIO(docx_bytes))
-    parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                if cell.text and cell.text.strip():
-                    parts.append(cell.text.strip())
+    if docx_bytes[:2] != b"PK":
+        raise BadSourceFile("odpoved neni DOCX (zacina " + repr(docx_bytes[:8]) + ")")
+    try:
+        doc = Document(BytesIO(docx_bytes))
+        parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text and cell.text.strip():
+                        parts.append(cell.text.strip())
+    except Exception as e:
+        raise BadSourceFile("DOCX nelze precist: " + str(e))
     return "\n".join(parts).strip()
 
 
@@ -386,6 +405,12 @@ def import_new_documents(conn):
                     text = extract_docx_text(file_resp.content)
                 else:
                     text = extract_pdf_text(file_resp.content)
+            except BadSourceFile as e:
+                # chyba na strane zdroje (HTML misto PDF, poskozeny soubor) - ne chyba
+                # skriptu; preskocit, pri dalsim behu se zkusi znovu
+                print(f"SKIP (neplatny soubor na zdroji): {item['title']} -> {e}")
+                existing.add(item["slug"])
+                continue
             except Exception as e:
                 print(f"WARN: file fetch/extract failed for {item['title']}: {e}")
                 _STATE["had_errors"] = True
@@ -395,10 +420,10 @@ def import_new_documents(conn):
                 existing.add(item["slug"])
                 continue
             own_is_current = True
-            m_own = re.search("\u010d\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", item["title"], re.I)
+            m_own = re.search("č\\.?\\s*(\\d+[a-z]?)\\s*/\\s*(\\d{4})", item["title"], re.I)
             if m_own:
                 own_num, own_year = m_own.group(1), m_own.group(2)
-                pat_own = "p[u\u016f]vodn[\u011be][^0-9]{0,40}\u010d\\.?\\s*" + re.escape(own_num) + "\\s*/\\s*" + re.escape(own_year)
+                pat_own = "p[uů]vodn[ěe][^0-9]{0,40}č\\.?\\s*" + re.escape(own_num) + "\\s*/\\s*" + re.escape(own_year)
                 with conn.cursor() as cur0:
                     cur0.execute(
                         "select 1 from documents where source = %s and title ~* %s limit 1",
@@ -435,7 +460,7 @@ def import_new_documents(conn):
                 if detail.get("replaces_ident"):
                     print(f"SUPERSEDES: {item['title']} -> marking c. {detail['replaces_ident']} as historical")
                     old_num, old_year = detail["replaces_ident"].split("/")
-                    pat = "\u010d\\.?\\s*" + re.escape(old_num) + "\\s*/\\s*" + re.escape(old_year)
+                    pat = "č\\.?\\s*" + re.escape(old_num) + "\\s*/\\s*" + re.escape(old_year)
                     cur.execute(
                         """
                         update documents set is_current = false
