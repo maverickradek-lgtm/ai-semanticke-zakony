@@ -87,6 +87,19 @@ DETAIL_RE = re.compile(r"/metodicke-materialy-chj/\d{4}/[a-z0-9-]+", re.I)
 START_TIME = time.time()
 
 
+# Zaznamy, u kterych MF odkazuje na mrtvy/externi soubor - nahrazeno aktualnim
+# zdrojem (slug detail stranky -> nazev + primy odkaz na PDF). Pridano 2026-11-27:
+# stary odkaz na IPPF 2017 (IIA) vede na uvodni stranku; od 1/2025 plati
+# Globalni standardy interniho auditu (vyhlaseny v Sb. pod c. 419/2025).
+FILE_OVERRIDES = {
+    "mezinarodni-standardy-pro-profesni-praxi-24374": {
+        "title": "Globální standardy interního auditu (IIA 2024, český překlad) – nahrazují Mezinárodní standardy pro profesní praxi interního auditu",
+        "pdf_url": "https://theiia.org/globalassets/site/standards/editable-versions/global-internal-audit-standards-czech.pdf",
+    },
+}
+BROWSER_HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+
+
 class BadSourceFile(Exception):
     """Soubor na zdroji neni platny PDF/DOCX (HTML stranka, useknuty soubor...)."""
 
@@ -394,12 +407,18 @@ def import_new_documents(conn):
             except requests.RequestException as e:
                 print(f"WARN: fetch_detail({item['url']}) failed: {e}")
                 continue
+            ov = FILE_OVERRIDES.get(item["slug"])
+            if ov:
+                print(f"OVERRIDE: {item['title']} -> {ov['pdf_url']}")
+                detail["pdf_url"] = ov["pdf_url"]
+                detail["file_kind"] = "pdf"
+                item = dict(item, title=ov["title"])
             if not detail["pdf_url"]:
                 print(f"SKIP (no pdf/docx): {item['title']}")
                 existing.add(item["slug"])
                 continue
             try:
-                file_resp = requests.get(detail["pdf_url"], timeout=60)
+                file_resp = requests.get(detail["pdf_url"], timeout=120, headers=BROWSER_HEADERS if ov else None)
                 file_resp.raise_for_status()
                 if detail.get("file_kind") == "docx":
                     text = extract_docx_text(file_resp.content)
