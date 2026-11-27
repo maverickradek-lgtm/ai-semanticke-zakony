@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Rozhodnicek: dopocita embeddingy (gemini-embedding-001, 256 dim) pro chunky bez embeddingu.
 
+Poradi zpracovani: od nejnovejsich dokumentu (documents.datum) po nejstarsi.
+
 Env:
   NEON_ROZHODNICEK_DB_URL
   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   (pojistka kvoty, scripts/gemini_quota.py)
@@ -97,9 +99,10 @@ def main():
     while time.time() - START < BUDGET:
         cur = conn.cursor()
         # preskakuje neverejna usneseni bez textu (jen cislo a cj.) - neplytvat kvotou
+        # poradi: nejnovejsi dokumenty prvni (datum sestupne), v ramci dokumentu podle chunk_index
         cur.execute("select c.id, c.content from chunks c join documents d on d.id = c.document_id "
                     "where c.embedding is null and length(coalesce(d.text_plny, '')) > 200 "
-                    "order by c.id limit %s", (BATCH,))
+                    "order by d.datum desc nulls last, d.id desc, c.chunk_index, c.id limit %s", (BATCH,))
         rows = cur.fetchall()
         cur.close()
         if not rows:
