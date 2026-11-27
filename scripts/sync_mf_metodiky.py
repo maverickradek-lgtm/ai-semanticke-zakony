@@ -617,6 +617,47 @@ def import_extra_documents(conn):
     return new_count
 
 
+MAX_EMBED_CHARS = 8000  # embed_text() zpracuje jen prvnich 8000 znaku chunku
+
+
+def heal_oversize_chunks(conn):
+    """Pojistka: chunk delsi nez MAX_EMBED_CHARS by se do vyhledavani dostal jen
+    zcasti (zbytek textu by byl nevyhledatelny). Takove dokumenty se znovu
+    rozdeli (embedding se dopocita pozdeji) - chyba se tak nemuze vratit,
+    at uz vznikla jakkoli (stary kod, rucni vklad, zmena zdroje)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "select distinct document_id from chunks where length(content) > %s;",
+            (MAX_EMBED_CHARS,),
+        )
+        doc_ids = [r[0] for r in cur.fetchall()]
+    healed = 0
+    for doc_id in doc_ids:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select heading, content from chunks where document_id = %s order by chunk_index;",
+                (doc_id,),
+            )
+            rows = cur.fetchall()
+            if not rows:
+                continue
+            base_heading = rows[0][0] or ""
+            full_text = "\n\n".join(r[1] or "" for r in rows)
+            new_chunks = split_into_chunks(full_text)
+            cur.execute("delete from chunks where document_id = %s;", (doc_id,))
+            for i, ctext in enumerate(new_chunks):
+                heading = base_heading if i == 0 else f"{base_heading} (pokracovani {i + 1})"
+                cur.execute(
+                    "insert into chunks (document_id, chunk_index, heading, content) values (%s, %s, %s, %s);",
+                    (doc_id, i, heading, ctext),
+                )
+        conn.commit()
+        healed += 1
+        print(f"HEALED oversize chunks: document {doc_id} -> {len(new_chunks)} chunks")
+    print(f"Heal done: {healed} documents re-chunked")
+    return healed
+
+
 def ensure_conn(conn):
     if conn is not None and conn.closed == 0:
         try:
@@ -672,6 +713,7 @@ def main():
     conn = db_connect(NEON_DB_URL)
     try:
         ensure_schema(conn)
+        heal_oversize_chunks(conn)
         import_new_documents(conn)
         import_extra_documents(conn)
         gemini_key = get_admin_gemini_key()
