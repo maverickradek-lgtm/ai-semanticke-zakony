@@ -417,6 +417,10 @@ def split_into_chunks(text, max_chars=MAX_CHARS_PER_CHUNK):
     return chunks or ([text] if text else [])
 
 
+class QuotaExhausted(Exception):
+    """Gemini vraci opakovane 429 - vycerpany (denni) limit; embedding pokracuje dalsi beh."""
+
+
 def embed_text(text, gemini_key, retries=3):
     for attempt in range(retries):
         try:
@@ -431,6 +435,8 @@ def embed_text(text, gemini_key, retries=3):
                 timeout=30,
             )
             if resp.status_code == 429:
+                if attempt == retries - 1:
+                    raise QuotaExhausted()
                 time.sleep(5 * (attempt + 1))
                 continue
             resp.raise_for_status()
@@ -690,6 +696,11 @@ def embed_pending(conn, gemini_key):
                 break
             try:
                 vec = embed_text(content, gemini_key)
+            except QuotaExhausted:
+                # neni to chyba: limit se obnovi, zbytek se dopocita pristim behem
+                print("INFO: Gemini limit vycerpan (429) - zbyvajici embedding pokracuje pristim behem")
+                print(f"Embedding done: {embedded} chunks")
+                return embedded
             except Exception as e:
                 print(f"WARN: embed failed for {chunk_id}: {e}")
                 _STATE["had_errors"] = True
